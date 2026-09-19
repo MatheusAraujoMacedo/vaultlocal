@@ -64,6 +64,9 @@ class VaultEntry(Base):
 
     tags: Mapped[str] = mapped_column(String(512), default="")  # comma separated for sqlite compat
 
+    wrapped_data_key: Mapped[str] = mapped_column(Text)
+    wrapped_nonce: Mapped[str] = mapped_column(String(64))
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
