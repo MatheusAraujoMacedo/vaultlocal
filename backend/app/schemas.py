@@ -118,6 +118,11 @@ class EntryIn(BaseModel):
     def _validate_wrapped_data_key(cls, v: str) -> str:
         return _b64_len(v, 48, "wrapped_data_key")
 
+    @field_validator("wrapped_nonce")
+    @classmethod
+    def _validate_wrapped_nonce(cls, v: str) -> str:
+        return _b64_len(v, 12, "wrapped_nonce")
+
     @model_validator(mode="after")
     def _validate_notes_pair(self) -> "EntryIn":
         if (self.notes_enc is None) != (self.nonce_notes is None):
