@@ -3,12 +3,23 @@ from pydantic import BaseModel, EmailStr, Field
 
 class RegisterIn(BaseModel):
     email: EmailStr
-    master_password: str = Field(min_length=12)
+    salt_auth: str
+    salt_crypto: str
+    auth_key: str = Field(min_length=1)
+
+
+class LoginInitIn(BaseModel):
+    email: EmailStr
+
+
+class LoginInitOut(BaseModel):
+    salt_auth: str
+    salt_crypto: str
 
 
 class LoginIn(BaseModel):
     email: EmailStr
-    master_password: str
+    auth_key: str
 
 
 class TokenOut(BaseModel):
@@ -21,9 +32,18 @@ class RefreshIn(BaseModel):
     refresh_token: str
 
 
+class ChangePasswordEntryRewrap(BaseModel):
+    id: str
+    wrapped_data_key: str
+    wrapped_nonce: str
+
+
 class ChangePasswordIn(BaseModel):
-    old_master_password: str
-    new_master_password: str = Field(min_length=12)
+    old_auth_key: str
+    new_auth_key: str
+    new_salt_auth: str
+    new_salt_crypto: str
+    entries: list[ChangePasswordEntryRewrap]
 
 
 class EntryIn(BaseModel):

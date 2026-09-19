@@ -35,21 +35,6 @@ def generate_salt() -> bytes:
     return secrets.token_bytes(16)
 
 
-def derive_kek(master_password: str, salt: bytes) -> bytes:
-    """Derive a 32-byte key-encryption-key from the master password."""
-    from argon2.low_level import hash_secret_raw, Type
-    raw = hash_secret_raw(
-        secret=master_password.encode(),
-        salt=salt,
-        time_cost=3,
-        memory_cost=65536,
-        parallelism=2,
-        hash_len=32,
-        type=Type.ID,
-    )
-    return raw
-
-
 def encrypt(data: bytes, key: bytes) -> dict:
     nonce = secrets.token_bytes(12)
     ct = AESGCM(key).encrypt(nonce, data, None)

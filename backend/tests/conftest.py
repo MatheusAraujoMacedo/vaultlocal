@@ -1,4 +1,6 @@
+import base64
 import os
+import secrets
 import tempfile
 
 _tmp_dir = tempfile.mkdtemp(prefix="vaultlocal_test_")
@@ -34,17 +36,17 @@ async def client():
 
 @pytest.fixture
 def register_and_login(client):
-    async def _do(email: str, password: str) -> dict:
+    async def _do(email: str, auth_key: str = "sim-auth-key-AAAAAAAAAAAAAAAAAAAA") -> dict:
+        salt_auth = base64.b64encode(secrets.token_bytes(16)).decode()
+        salt_crypto = base64.b64encode(secrets.token_bytes(16)).decode()
         resp = await client.post(
             "/api/v1/auth/register",
-            json={"email": email, "master_password": password},
+            json={"email": email, "salt_auth": salt_auth, "salt_crypto": salt_crypto, "auth_key": auth_key},
         )
         assert resp.status_code == 201, resp.text
-        resp = await client.post(
-            "/api/v1/auth/login",
-            json={"email": email, "master_password": password},
-        )
+        user_id = resp.json()["id"]
+        resp = await client.post("/api/v1/auth/login", json={"email": email, "auth_key": auth_key})
         assert resp.status_code == 200, resp.text
-        return resp.json()
+        return {**resp.json(), "user_id": user_id}
 
     return _do
