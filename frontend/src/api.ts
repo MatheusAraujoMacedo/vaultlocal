@@ -1,3 +1,5 @@
+import { clearSessionKek } from './crypto'
+
 const API_BASE = '/api/v1'
 
 function getToken(): string | null {
@@ -45,23 +47,34 @@ export interface EntryListItem {
   updated_at: string
 }
 
-export interface Entry extends EntryListItem {
-  username: string
-  password: string
-  notes: string | null
+export interface EntryBlob extends EntryListItem {
+  username_enc: string
+  nonce_username: string
+  password_enc: string
+  nonce_password: string
+  notes_enc: string | null
+  nonce_notes: string | null
+  wrapped_data_key: string
+  wrapped_nonce: string
 }
 
 export const api = {
-  register: (email: string, master_password: string) =>
-    request<{ id: string; email: string }>('/auth/register', {
+  loginInit: (email: string) =>
+    request<{ salt_auth: string; salt_crypto: string }>('/auth/login/init', {
       method: 'POST',
-      body: JSON.stringify({ email, master_password }),
+      body: JSON.stringify({ email }),
     }, false),
 
-  login: (email: string, master_password: string) =>
+  register: (email: string, salt_auth: string, salt_crypto: string, auth_key: string) =>
+    request<{ id: string; email: string }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, salt_auth, salt_crypto, auth_key }),
+    }, false),
+
+  login: (email: string, auth_key: string) =>
     request<{ access_token: string; refresh_token: string }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, master_password }),
+      body: JSON.stringify({ email, auth_key }),
     }, false),
 
   logout: () => {
@@ -73,17 +86,18 @@ export const api = {
       }, false).catch(() => {})
     }
     clearTokens()
+    clearSessionKek()
   },
 
   listEntries: () => request<EntryListItem[]>('/entries'),
 
-  getEntry: (id: string) => request<Entry>(`/entries/${id}`),
+  getEntry: (id: string) => request<EntryBlob>(`/entries/${id}`),
 
-  createEntry: (data: Omit<Entry, 'id' | 'created_at' | 'updated_at'>) =>
-    request<Entry>('/entries', { method: 'POST', body: JSON.stringify(data) }),
+  createEntry: (data: Omit<EntryBlob, 'id' | 'created_at' | 'updated_at'>) =>
+    request<EntryBlob>('/entries', { method: 'POST', body: JSON.stringify(data) }),
 
-  updateEntry: (id: string, data: Omit<Entry, 'id' | 'created_at' | 'updated_at'>) =>
-    request<Entry>(`/entries/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  updateEntry: (id: string, data: Omit<EntryBlob, 'id' | 'created_at' | 'updated_at'>) =>
+    request<EntryBlob>(`/entries/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
   deleteEntry: (id: string) =>
     request<void>(`/entries/${id}`, { method: 'DELETE' }),

@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, setTokens } from '../api'
+import { deriveAuthKey, deriveKek, randomSaltB64, isCommonPassword, setSessionKek } from '../crypto'
 
 export default function Register() {
   const [email, setEmail] = useState('')
@@ -17,15 +18,24 @@ export default function Register() {
       setError('Senha-mestra precisa ter no mínimo 12 caracteres')
       return
     }
+    if (isCommonPassword(password)) {
+      setError('Senha-mestra é muito comum, escolha uma mais forte')
+      return
+    }
     if (password !== confirm) {
       setError('As senhas não coincidem')
       return
     }
     setLoading(true)
     try {
-      await api.register(email, password)
-      const res = await api.login(email, password)
+      const saltAuth = randomSaltB64()
+      const saltCrypto = randomSaltB64()
+      const authKey = await deriveAuthKey(password, saltAuth)
+      await api.register(email, saltAuth, saltCrypto, authKey)
+      const res = await api.login(email, authKey)
       setTokens(res.access_token, res.refresh_token)
+      const kek = await deriveKek(password, saltCrypto)
+      setSessionKek(kek)
       window.location.href = '/'
     } catch (err: any) {
       setError(err.message || 'Erro ao criar conta')

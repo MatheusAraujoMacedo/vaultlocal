@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, setTokens } from '../api'
+import { deriveAuthKey, deriveKek, setSessionKek } from '../crypto'
 
 export default function Login({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState('')
@@ -14,8 +15,12 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     setError('')
     setLoading(true)
     try {
-      const res = await api.login(email, password)
+      const salts = await api.loginInit(email)
+      const authKey = await deriveAuthKey(password, salts.salt_auth)
+      const kek = await deriveKek(password, salts.salt_crypto)
+      const res = await api.login(email, authKey)
       setTokens(res.access_token, res.refresh_token)
+      setSessionKek(kek)
       onLogin()
       nav('/')
     } catch (err: any) {
