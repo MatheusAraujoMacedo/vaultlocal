@@ -1,0 +1,14 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+sqlalchemy[asyncio]==2.0.32
+asyncpg==0.29.0
+argon2-cffi==23.1.0
+cryptography==43.0.1
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.9
+pydantic==2.8.2
+pydantic-settings==2.4.0
+slowapi==0.1.9
+aiosqlite==0.20.0
+alembic==1.13.2
+email-validator==2.2.0
