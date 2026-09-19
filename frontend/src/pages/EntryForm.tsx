@@ -17,30 +17,36 @@ export default function EntryForm() {
   const [notes, setNotes] = useState('')
   const [tags, setTags] = useState('')
   const [error, setError] = useState('')
+  const [loadError, setLoadError] = useState('')
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [dataKey, setDataKey] = useState<CryptoKey | null>(null)
 
   useEffect(() => {
     if (!id) return
-    api.getEntry(id).then(async (e) => {
-      const kek = getSessionKek()
-      const key = await unwrapDataKey(
-        { wrapped_data_key: e.wrapped_data_key, wrapped_nonce: e.wrapped_nonce },
-        kek,
-      )
-      setDataKey(key)
-      setTitle(e.title)
-      setSite(e.site || '')
-      setUsername(await decryptField({ ciphertext: e.username_enc, nonce: e.nonce_username }, key))
-      setPassword(await decryptField({ ciphertext: e.password_enc, nonce: e.nonce_password }, key))
-      setNotes(
-        e.notes_enc
-          ? await decryptField({ ciphertext: e.notes_enc, nonce: e.nonce_notes! }, key)
-          : '',
-      )
-      setTags(e.tags)
-    })
+    ;(async () => {
+      try {
+        const e = await api.getEntry(id)
+        const kek = getSessionKek()
+        const key = await unwrapDataKey(
+          { wrapped_data_key: e.wrapped_data_key, wrapped_nonce: e.wrapped_nonce },
+          kek,
+        )
+        setDataKey(key)
+        setTitle(e.title)
+        setSite(e.site || '')
+        setUsername(await decryptField({ ciphertext: e.username_enc, nonce: e.nonce_username }, key))
+        setPassword(await decryptField({ ciphertext: e.password_enc, nonce: e.nonce_password }, key))
+        setNotes(
+          e.notes_enc
+            ? await decryptField({ ciphertext: e.notes_enc, nonce: e.nonce_notes! }, key)
+            : '',
+        )
+        setTags(e.tags)
+      } catch (err: any) {
+        setLoadError(err.message)
+      }
+    })()
   }, [id])
 
   async function submit(ev: FormEvent) {
@@ -91,6 +97,19 @@ export default function EntryForm() {
     } finally {
       setGenerating(false)
     }
+  }
+
+  if (isEdit && loadError) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-12">
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+          {loadError}
+        </p>
+        <Link to="/" className="block mt-4 text-sm text-stone-900 hover:underline">
+          ← Voltar
+        </Link>
+      </div>
+    )
   }
 
   return (
