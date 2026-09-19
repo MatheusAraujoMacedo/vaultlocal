@@ -1,10 +1,23 @@
+import base64
+
+ENC_USERNAME = base64.b64encode(b"enc-username").decode()
+ENC_USERNAME_2 = base64.b64encode(b"enc-username-2").decode()
+ENC_PASSWORD = base64.b64encode(b"enc-password").decode()
+ENC_NOTES = base64.b64encode(b"enc-notes").decode()
+NONCE_USERNAME = base64.b64encode(b"n" * 12).decode()
+NONCE_PASSWORD = base64.b64encode(b"p" * 12).decode()
+NONCE_NOTES = base64.b64encode(b"o" * 12).decode()
+WRAPPED_DATA_KEY = base64.b64encode(b"d" * 48).decode()
+WRAPPED_NONCE = base64.b64encode(b"w" * 12).decode()
+
+
 def _entry_payload(**overrides):
     payload = dict(
         title="GitHub", site="github.com",
-        username_enc="enc-username", nonce_username="nonce-u",
-        password_enc="enc-password", nonce_password="nonce-p",
-        notes_enc="enc-notes", nonce_notes="nonce-n",
-        wrapped_data_key="wrapped-dk", wrapped_nonce="wrapped-n",
+        username_enc=ENC_USERNAME, nonce_username=NONCE_USERNAME,
+        password_enc=ENC_PASSWORD, nonce_password=NONCE_PASSWORD,
+        notes_enc=ENC_NOTES, nonce_notes=NONCE_NOTES,
+        wrapped_data_key=WRAPPED_DATA_KEY, wrapped_nonce=WRAPPED_NONCE,
         tags="dev,work",
     )
     payload.update(overrides)
@@ -21,15 +34,15 @@ async def test_create_and_get_entry_roundtrips_blobs(client, register_and_login)
     resp = await client.post("/api/v1/entries", headers=headers, json=_entry_payload())
     assert resp.status_code == 201
     entry = resp.json()
-    assert entry["username_enc"] == "enc-username"
-    assert entry["password_enc"] == "enc-password"
-    assert entry["wrapped_data_key"] == "wrapped-dk"
+    assert entry["username_enc"] == ENC_USERNAME
+    assert entry["password_enc"] == ENC_PASSWORD
+    assert entry["wrapped_data_key"] == WRAPPED_DATA_KEY
 
     resp = await client.get(f"/api/v1/entries/{entry['id']}", headers=headers)
     assert resp.status_code == 200
     fetched = resp.json()
-    assert fetched["username_enc"] == "enc-username"
-    assert fetched["wrapped_nonce"] == "wrapped-n"
+    assert fetched["username_enc"] == ENC_USERNAME
+    assert fetched["wrapped_nonce"] == WRAPPED_NONCE
 
 
 async def test_create_entry_without_notes(client, register_and_login):
@@ -70,12 +83,12 @@ async def test_update_entry_changes_blobs(client, register_and_login):
 
     resp = await client.put(
         f"/api/v1/entries/{entry_id}", headers=headers,
-        json=_entry_payload(title="New", username_enc="enc-username-2", tags="updated"),
+        json=_entry_payload(title="New", username_enc=ENC_USERNAME_2, tags="updated"),
     )
     assert resp.status_code == 200
     updated = resp.json()
     assert updated["title"] == "New"
-    assert updated["username_enc"] == "enc-username-2"
+    assert updated["username_enc"] == ENC_USERNAME_2
     assert updated["tags"] == "updated"
 
 

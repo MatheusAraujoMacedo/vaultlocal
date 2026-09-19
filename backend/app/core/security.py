@@ -1,5 +1,4 @@
 import secrets
-import base64
 from argon2 import PasswordHasher
 from jose import jwt
 from datetime import datetime, timedelta, timezone
@@ -27,10 +26,6 @@ def verify_password(plain: str, hashed: str) -> bool:
         return ph.verify(hashed, plain)
     except Exception:
         return False
-
-
-def generate_salt() -> bytes:
-    return secrets.token_bytes(16)
 
 
 def create_access_token(subject: str) -> str:

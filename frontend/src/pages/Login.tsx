@@ -1,7 +1,7 @@
 import { useState, FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, setTokens } from '../api'
-import { deriveAuthKey, deriveKek, setSessionKek } from '../crypto'
+import { deriveAuthKey, deriveKek, setSessionKek, clearSessionKek } from '../crypto'
 
 export default function Login({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState('')
@@ -12,6 +12,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
 
   async function submit(e: FormEvent) {
     e.preventDefault()
+    clearSessionKek()
     setError('')
     setLoading(true)
     try {

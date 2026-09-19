@@ -125,6 +125,25 @@ async def test_login_lockout_engages_after_threshold(client):
     assert resp.status_code in (401, 429)
 
 
+async def test_login_resets_failed_attempts_on_success(client):
+    await _register(client, "molly@test.com")
+    for _ in range(LOCKOUT_THRESHOLD - 1):
+        resp = await client.post(
+            "/api/v1/auth/login", json={"email": "molly@test.com", "auth_key": "wrong-key"}
+        )
+        assert resp.status_code == 401
+
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "molly@test.com", "auth_key": AUTH_KEY}
+    )
+    assert resp.status_code == 200
+
+    async with SessionLocal() as db:
+        user = await db.scalar(select(User).where(User.email == "molly@test.com"))
+        assert user.failed_login_attempts == 0
+        assert user.locked_until is None
+
+
 async def test_refresh_rotates_token(client):
     await _register(client, "frank@test.com")
     tokens = await _login(client, "frank@test.com")
@@ -250,21 +269,23 @@ async def test_change_password_rewraps_entry_keys_without_touching_ciphertext(cl
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
     entry_id = await _create_entry_directly(reg["id"])
 
+    new_wrapped_data_key = base64.b64encode(b"x" * 48).decode()
+    new_wrapped_nonce = base64.b64encode(b"y" * 12).decode()
     resp = await client.post(
         "/api/v1/auth/change-password",
         headers=headers,
         json={
             "old_auth_key": AUTH_KEY, "new_auth_key": NEW_AUTH_KEY,
             "new_salt_auth": _salt(), "new_salt_crypto": _salt(),
-            "entries": [{"id": entry_id, "wrapped_data_key": "new-wrapped", "wrapped_nonce": "new-nonce"}],
+            "entries": [{"id": entry_id, "wrapped_data_key": new_wrapped_data_key, "wrapped_nonce": new_wrapped_nonce}],
         },
     )
     assert resp.status_code == 200
 
     async with SessionLocal() as db:
         entry = await db.get(VaultEntry, entry_id)
-        assert entry.wrapped_data_key == "new-wrapped"
-        assert entry.wrapped_nonce == "new-nonce"
+        assert entry.wrapped_data_key == new_wrapped_data_key
+        assert entry.wrapped_nonce == new_wrapped_nonce
         assert entry.username_enc == "u"
         assert entry.password_enc == "p"
 

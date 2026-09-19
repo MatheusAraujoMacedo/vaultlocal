@@ -1,4 +1,24 @@
-from pydantic import BaseModel, EmailStr, Field
+import base64
+
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+
+
+def _b64_len(value: str, expected_len: int, field_name: str) -> str:
+    try:
+        raw = base64.b64decode(value, validate=True)
+    except Exception:
+        raise ValueError(f"{field_name} must be valid base64")
+    if len(raw) != expected_len:
+        raise ValueError(f"{field_name} must decode to exactly {expected_len} bytes")
+    return value
+
+
+def _b64_any_len(value: str, field_name: str) -> str:
+    try:
+        base64.b64decode(value, validate=True)
+    except Exception:
+        raise ValueError(f"{field_name} must be valid base64")
+    return value
 
 
 class RegisterIn(BaseModel):
@@ -37,6 +57,16 @@ class ChangePasswordEntryRewrap(BaseModel):
     wrapped_data_key: str
     wrapped_nonce: str
 
+    @field_validator("wrapped_nonce")
+    @classmethod
+    def _validate_wrapped_nonce(cls, v: str) -> str:
+        return _b64_len(v, 12, "wrapped_nonce")
+
+    @field_validator("wrapped_data_key")
+    @classmethod
+    def _validate_wrapped_data_key(cls, v: str) -> str:
+        return _b64_len(v, 48, "wrapped_data_key")
+
 
 class ChangePasswordIn(BaseModel):
     old_auth_key: str
@@ -58,6 +88,41 @@ class EntryIn(BaseModel):
     wrapped_data_key: str
     wrapped_nonce: str
     tags: str = ""
+
+    @field_validator("nonce_username", "nonce_password")
+    @classmethod
+    def _validate_nonce(cls, v: str) -> str:
+        return _b64_len(v, 12, "nonce")
+
+    @field_validator("nonce_notes")
+    @classmethod
+    def _validate_nonce_notes(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return _b64_len(v, 12, "nonce_notes")
+
+    @field_validator("username_enc", "password_enc")
+    @classmethod
+    def _validate_ciphertext(cls, v: str) -> str:
+        return _b64_any_len(v, "ciphertext")
+
+    @field_validator("notes_enc")
+    @classmethod
+    def _validate_notes_enc(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return _b64_any_len(v, "notes_enc")
+
+    @field_validator("wrapped_data_key")
+    @classmethod
+    def _validate_wrapped_data_key(cls, v: str) -> str:
+        return _b64_len(v, 48, "wrapped_data_key")
+
+    @model_validator(mode="after")
+    def _validate_notes_pair(self) -> "EntryIn":
+        if (self.notes_enc is None) != (self.nonce_notes is None):
+            raise ValueError("notes_enc and nonce_notes must both be set or both be None")
+        return self
 
 
 class EntryOut(BaseModel):

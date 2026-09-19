@@ -65,11 +65,17 @@ async def register(body: RegisterIn, db: AsyncSession = Depends(get_db)):
     existing = await db.scalar(select(User).where(User.email == body.email))
     if existing:
         raise HTTPException(409, "email already registered")
+    salt_auth = _b64decode(body.salt_auth, "salt_auth")
+    salt_crypto = _b64decode(body.salt_crypto, "salt_crypto")
+    if len(salt_auth) != 16:
+        raise HTTPException(400, "invalid base64 in salt_auth")
+    if len(salt_crypto) != 16:
+        raise HTTPException(400, "invalid base64 in salt_crypto")
     user = User(
         email=body.email,
         auth_hash=hash_password(body.auth_key),
-        salt_auth=_b64decode(body.salt_auth, "salt_auth"),
-        salt_crypto=_b64decode(body.salt_crypto, "salt_crypto"),
+        salt_auth=salt_auth,
+        salt_crypto=salt_crypto,
     )
     db.add(user)
     await db.commit()
@@ -154,7 +160,7 @@ async def change_password(
     entries = list(await db.scalars(select(VaultEntry).where(VaultEntry.user_id == user.id)))
     entry_by_id = {e.id: e for e in entries}
     incoming_ids = {item.id for item in body.entries}
-    if incoming_ids != set(entry_by_id.keys()):
+    if incoming_ids != set(entry_by_id.keys()) or len(body.entries) != len(incoming_ids):
         raise HTTPException(400, "entries payload must cover exactly the user's current entries")
 
     for item in body.entries:

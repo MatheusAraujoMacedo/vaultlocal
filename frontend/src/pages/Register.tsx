@@ -36,7 +36,7 @@ export default function Register() {
       setTokens(res.access_token, res.refresh_token)
       const kek = await deriveKek(password, saltCrypto)
       setSessionKek(kek)
-      window.location.href = '/'
+      nav('/')
     } catch (err: any) {
       setError(err.message || 'Erro ao criar conta')
     } finally {
