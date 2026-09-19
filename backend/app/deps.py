@@ -5,7 +5,6 @@ from sqlalchemy import select
 from .db import SessionLocal
 from .models import User
 from .core.security import verify_token
-from .core.kekstore import get_kek
 
 security = HTTPBearer()
 
@@ -28,12 +27,3 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=401, detail="user not found")
     return user
-
-
-async def get_current_user_with_kek(
-    user: User = Depends(get_current_user),
-) -> tuple[User, bytes]:
-    kek = get_kek(user.id)
-    if not kek:
-        raise HTTPException(status_code=401, detail="session expired, login again")
-    return user, kek

@@ -3,25 +3,26 @@ import string
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
-from ..deps import get_db, get_current_user_with_kek
+from ..deps import get_db, get_current_user
 from ..models import VaultEntry, User
 from ..schemas import EntryIn, EntryOut, EntryListItem, GenerateIn, GenerateOut
-from ..core.security import encrypt, decrypt
 
 router = APIRouter(prefix="/entries", tags=["entries"])
 
 
-def _to_out(e: VaultEntry, kek: bytes) -> EntryOut:
-    username = decrypt(e.username_enc, e.nonce_username, kek).decode()
-    password = decrypt(e.password_enc, e.nonce_password, kek).decode()
-    notes = decrypt(e.notes_enc, e.nonce_notes, kek).decode() if e.notes_enc else None
+def _to_out(e: VaultEntry) -> EntryOut:
     return EntryOut(
         id=e.id,
         title=e.title,
         site=e.site,
-        username=username,
-        password=password,
-        notes=notes,
+        username_enc=e.username_enc,
+        nonce_username=e.nonce_username,
+        password_enc=e.password_enc,
+        nonce_password=e.nonce_password,
+        notes_enc=e.notes_enc,
+        nonce_notes=e.nonce_notes,
+        wrapped_data_key=e.wrapped_data_key,
+        wrapped_nonce=e.wrapped_nonce,
         tags=e.tags or "",
         created_at=e.created_at.isoformat(),
         updated_at=e.updated_at.isoformat(),
@@ -30,21 +31,16 @@ def _to_out(e: VaultEntry, kek: bytes) -> EntryOut:
 
 @router.get("", response_model=list[EntryListItem])
 async def list_entries(
-    dep: tuple[User, bytes] = Depends(get_current_user_with_kek),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user, _ = dep
     rows = await db.scalars(
         select(VaultEntry).where(VaultEntry.user_id == user.id).order_by(VaultEntry.updated_at.desc())
     )
     return [
         EntryListItem(
-            id=e.id,
-            title=e.title,
-            site=e.site,
-            tags=e.tags or "",
-            created_at=e.created_at.isoformat(),
-            updated_at=e.updated_at.isoformat(),
+            id=e.id, title=e.title, site=e.site, tags=e.tags or "",
+            created_at=e.created_at.isoformat(), updated_at=e.updated_at.isoformat(),
         )
         for e in rows
     ]
@@ -53,10 +49,9 @@ async def list_entries(
 @router.get("/search", response_model=list[EntryListItem])
 async def search_entries(
     q: str,
-    dep: tuple[User, bytes] = Depends(get_current_user_with_kek),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user, _ = dep
     like = f"%{q}%"
     rows = await db.scalars(
         select(VaultEntry).where(
@@ -76,79 +71,73 @@ async def search_entries(
 @router.post("", response_model=EntryOut, status_code=201)
 async def create_entry(
     body: EntryIn,
-    dep: tuple[User, bytes] = Depends(get_current_user_with_kek),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user, kek = dep
-    u = encrypt(body.username.encode(), kek)
-    p = encrypt(body.password.encode(), kek)
-    n = encrypt(body.notes.encode(), kek) if body.notes else None
     entry = VaultEntry(
         user_id=user.id,
         title=body.title,
         site=body.site,
-        username_enc=u["ciphertext"],
-        nonce_username=u["nonce"],
-        password_enc=p["ciphertext"],
-        nonce_password=p["nonce"],
-        notes_enc=n["ciphertext"] if n else None,
-        nonce_notes=n["nonce"] if n else None,
+        username_enc=body.username_enc,
+        nonce_username=body.nonce_username,
+        password_enc=body.password_enc,
+        nonce_password=body.nonce_password,
+        notes_enc=body.notes_enc,
+        nonce_notes=body.nonce_notes,
+        wrapped_data_key=body.wrapped_data_key,
+        wrapped_nonce=body.wrapped_nonce,
         tags=body.tags,
     )
     db.add(entry)
     await db.commit()
     await db.refresh(entry)
-    return _to_out(entry, kek)
+    return _to_out(entry)
 
 
 @router.get("/{entry_id}", response_model=EntryOut)
 async def get_entry(
     entry_id: str,
-    dep: tuple[User, bytes] = Depends(get_current_user_with_kek),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user, kek = dep
     e = await db.get(VaultEntry, entry_id)
     if not e or e.user_id != user.id:
         raise HTTPException(404, "not found")
-    return _to_out(e, kek)
+    return _to_out(e)
 
 
 @router.put("/{entry_id}", response_model=EntryOut)
 async def update_entry(
     entry_id: str,
     body: EntryIn,
-    dep: tuple[User, bytes] = Depends(get_current_user_with_kek),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user, kek = dep
     e = await db.get(VaultEntry, entry_id)
     if not e or e.user_id != user.id:
         raise HTTPException(404, "not found")
-    u = encrypt(body.username.encode(), kek)
-    p = encrypt(body.password.encode(), kek)
-    n = encrypt(body.notes.encode(), kek) if body.notes else None
     e.title = body.title
     e.site = body.site
-    e.username_enc = u["ciphertext"]
-    e.nonce_username = u["nonce"]
-    e.password_enc = p["ciphertext"]
-    e.nonce_password = p["nonce"]
-    e.notes_enc = n["ciphertext"] if n else None
-    e.nonce_notes = n["nonce"] if n else None
+    e.username_enc = body.username_enc
+    e.nonce_username = body.nonce_username
+    e.password_enc = body.password_enc
+    e.nonce_password = body.nonce_password
+    e.notes_enc = body.notes_enc
+    e.nonce_notes = body.nonce_notes
+    e.wrapped_data_key = body.wrapped_data_key
+    e.wrapped_nonce = body.wrapped_nonce
     e.tags = body.tags
     await db.commit()
     await db.refresh(e)
-    return _to_out(e, kek)
+    return _to_out(e)
 
 
 @router.delete("/{entry_id}", status_code=204)
 async def delete_entry(
     entry_id: str,
-    dep: tuple[User, bytes] = Depends(get_current_user_with_kek),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user, _ = dep
     e = await db.get(VaultEntry, entry_id)
     if not e or e.user_id != user.id:
         raise HTTPException(404, "not found")
@@ -159,7 +148,7 @@ async def delete_entry(
 @router.post("/generate/password", response_model=GenerateOut)
 async def generate_password(
     body: GenerateIn,
-    dep: tuple[User, bytes] = Depends(get_current_user_with_kek),
+    user: User = Depends(get_current_user),
 ):
     chars = string.ascii_letters + string.digits
     if body.use_symbols:

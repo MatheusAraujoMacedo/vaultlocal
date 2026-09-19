@@ -1,8 +1,6 @@
-import os
 import secrets
 import base64
 from argon2 import PasswordHasher
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from jose import jwt
 from datetime import datetime, timedelta, timezone
 from ..config import settings
@@ -33,18 +31,6 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def generate_salt() -> bytes:
     return secrets.token_bytes(16)
-
-
-def encrypt(data: bytes, key: bytes) -> dict:
-    nonce = secrets.token_bytes(12)
-    ct = AESGCM(key).encrypt(nonce, data, None)
-    return {"ciphertext": base64.b64encode(ct).decode(), "nonce": base64.b64encode(nonce).decode()}
-
-
-def decrypt(ciphertext_b64: str, nonce_b64: str, key: bytes) -> bytes:
-    ct = base64.b64decode(ciphertext_b64)
-    nonce = base64.b64decode(nonce_b64)
-    return AESGCM(key).decrypt(nonce, ct, None)
 
 
 def create_access_token(subject: str) -> str:

@@ -10,7 +10,6 @@ os.environ["JWT_SECRET"] = "test-secret-not-for-prod"
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.core import kekstore
 from app.core.limiter import limiter
 from app.db import engine
 from app.main import app
@@ -22,7 +21,6 @@ async def _isolated_state():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
-    kekstore._kek_store.clear()
     limiter.reset()
     yield
 

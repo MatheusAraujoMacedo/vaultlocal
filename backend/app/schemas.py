@@ -49,9 +49,14 @@ class ChangePasswordIn(BaseModel):
 class EntryIn(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     site: str | None = None
-    username: str
-    password: str
-    notes: str | None = None
+    username_enc: str
+    nonce_username: str
+    password_enc: str
+    nonce_password: str
+    notes_enc: str | None = None
+    nonce_notes: str | None = None
+    wrapped_data_key: str
+    wrapped_nonce: str
     tags: str = ""
 
 
@@ -59,9 +64,14 @@ class EntryOut(BaseModel):
     id: str
     title: str
     site: str | None
-    username: str
-    password: str
-    notes: str | None
+    username_enc: str
+    nonce_username: str
+    password_enc: str
+    nonce_password: str
+    notes_enc: str | None
+    nonce_notes: str | None
+    wrapped_data_key: str
+    wrapped_nonce: str
     tags: str
     created_at: str
     updated_at: str
