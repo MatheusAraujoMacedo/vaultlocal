@@ -79,6 +79,19 @@ async def test_register_duplicate_email_rejected(client):
     assert resp.status_code == 409
 
 
+async def test_register_rejects_malformed_base64_salt(client):
+    resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "malformed@test.com",
+            "salt_auth": "not-valid-base64!!",
+            "salt_crypto": _salt(),
+            "auth_key": AUTH_KEY,
+        },
+    )
+    assert resp.status_code == 400
+
+
 async def test_login_success_returns_tokens(client):
     await _register(client, "carol@test.com")
     tokens = await _login(client, "carol@test.com")
@@ -167,6 +180,23 @@ async def test_change_password_rejects_wrong_old_auth_key(client):
     )
     assert resp.status_code == 401
     assert reg["id"]
+
+
+async def test_change_password_rejects_malformed_base64_salt(client):
+    await _register(client, "liam@test.com")
+    tokens = await _login(client, "liam@test.com")
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+    resp = await client.post(
+        "/api/v1/auth/change-password",
+        headers=headers,
+        json={
+            "old_auth_key": AUTH_KEY, "new_auth_key": NEW_AUTH_KEY,
+            "new_salt_auth": "not-valid-base64!!", "new_salt_crypto": _salt(),
+            "entries": [],
+        },
+    )
+    assert resp.status_code == 400
 
 
 async def test_change_password_rejects_incomplete_entries_payload(client):

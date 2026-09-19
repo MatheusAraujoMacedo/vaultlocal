@@ -39,6 +39,13 @@ def _fake_salt(email: str, domain: str) -> str:
     return base64.b64encode(digest[:16]).decode()
 
 
+def _b64decode(value: str, field_name: str) -> bytes:
+    try:
+        return base64.b64decode(value, validate=True)
+    except Exception:
+        raise HTTPException(400, f"invalid base64 in {field_name}")
+
+
 @router.post("/login/init", response_model=LoginInitOut)
 async def login_init(body: LoginInitIn, db: AsyncSession = Depends(get_db)):
     user = await db.scalar(select(User).where(User.email == body.email))
@@ -61,8 +68,8 @@ async def register(body: RegisterIn, db: AsyncSession = Depends(get_db)):
     user = User(
         email=body.email,
         auth_hash=hash_password(body.auth_key),
-        salt_auth=base64.b64decode(body.salt_auth),
-        salt_crypto=base64.b64decode(body.salt_crypto),
+        salt_auth=_b64decode(body.salt_auth, "salt_auth"),
+        salt_crypto=_b64decode(body.salt_crypto, "salt_crypto"),
     )
     db.add(user)
     await db.commit()
@@ -141,6 +148,9 @@ async def change_password(
     if not verify_password(body.old_auth_key, user.auth_hash):
         raise HTTPException(401, "invalid credentials")
 
+    new_salt_auth = _b64decode(body.new_salt_auth, "new_salt_auth")
+    new_salt_crypto = _b64decode(body.new_salt_crypto, "new_salt_crypto")
+
     entries = list(await db.scalars(select(VaultEntry).where(VaultEntry.user_id == user.id)))
     entry_by_id = {e.id: e for e in entries}
     incoming_ids = {item.id for item in body.entries}
@@ -153,8 +163,8 @@ async def change_password(
         entry.wrapped_nonce = item.wrapped_nonce
 
     user.auth_hash = hash_password(body.new_auth_key)
-    user.salt_auth = base64.b64decode(body.new_salt_auth)
-    user.salt_crypto = base64.b64decode(body.new_salt_crypto)
+    user.salt_auth = new_salt_auth
+    user.salt_crypto = new_salt_crypto
 
     old_sessions = list(await db.scalars(select(Session).where(Session.user_id == user.id)))
     for s in old_sessions:
