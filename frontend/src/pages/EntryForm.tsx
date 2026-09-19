@@ -1,6 +1,9 @@
 import { useEffect, useState, FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
+import {
+  generateDataKey, wrapDataKey, unwrapDataKey, encryptField, decryptField, getSessionKek,
+} from '../crypto'
 
 export default function EntryForm() {
   const { id } = useParams<{ id: string }>()
@@ -16,15 +19,26 @@ export default function EntryForm() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [dataKey, setDataKey] = useState<CryptoKey | null>(null)
 
   useEffect(() => {
     if (!id) return
-    api.getEntry(id).then((e) => {
+    api.getEntry(id).then(async (e) => {
+      const kek = getSessionKek()
+      const key = await unwrapDataKey(
+        { wrapped_data_key: e.wrapped_data_key, wrapped_nonce: e.wrapped_nonce },
+        kek,
+      )
+      setDataKey(key)
       setTitle(e.title)
       setSite(e.site || '')
-      setUsername(e.username)
-      setPassword(e.password)
-      setNotes(e.notes || '')
+      setUsername(await decryptField({ ciphertext: e.username_enc, nonce: e.nonce_username }, key))
+      setPassword(await decryptField({ ciphertext: e.password_enc, nonce: e.nonce_password }, key))
+      setNotes(
+        e.notes_enc
+          ? await decryptField({ ciphertext: e.notes_enc, nonce: e.nonce_notes! }, key)
+          : '',
+      )
       setTags(e.tags)
     })
   }, [id])
@@ -34,7 +48,26 @@ export default function EntryForm() {
     setError('')
     setLoading(true)
     try {
-      const data = { title, site: site || null, username, password, notes: notes || null, tags }
+      const kek = getSessionKek()
+      const key = dataKey || (await generateDataKey())
+      const wrapped = await wrapDataKey(key, kek)
+      const u = await encryptField(username, key)
+      const p = await encryptField(password, key)
+      const n = notes ? await encryptField(notes, key) : null
+
+      const data = {
+        title,
+        site: site || null,
+        username_enc: u.ciphertext,
+        nonce_username: u.nonce,
+        password_enc: p.ciphertext,
+        nonce_password: p.nonce,
+        notes_enc: n ? n.ciphertext : null,
+        nonce_notes: n ? n.nonce : null,
+        wrapped_data_key: wrapped.wrapped_data_key,
+        wrapped_nonce: wrapped.wrapped_nonce,
+        tags,
+      }
       if (isEdit) {
         await api.updateEntry(id!, data)
       } else {

@@ -1,20 +1,45 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { api, Entry } from '../api'
+import { api } from '../api'
+import { unwrapDataKey, decryptField, getSessionKek } from '../crypto'
+
+interface DecryptedEntry {
+  id: string
+  title: string
+  site: string | null
+  username: string
+  password: string
+  notes: string | null
+  tags: string
+}
 
 export default function EntryDetail() {
   const { id } = useParams<{ id: string }>()
   const nav = useNavigate()
-  const [entry, setEntry] = useState<Entry | null>(null)
+  const [entry, setEntry] = useState<DecryptedEntry | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     if (!id) return
-    api
-      .getEntry(id)
-      .then(setEntry)
-      .catch((e) => setError(e.message))
+    ;(async () => {
+      try {
+        const e = await api.getEntry(id)
+        const kek = getSessionKek()
+        const key = await unwrapDataKey(
+          { wrapped_data_key: e.wrapped_data_key, wrapped_nonce: e.wrapped_nonce },
+          kek,
+        )
+        const username = await decryptField({ ciphertext: e.username_enc, nonce: e.nonce_username }, key)
+        const password = await decryptField({ ciphertext: e.password_enc, nonce: e.nonce_password }, key)
+        const notes = e.notes_enc
+          ? await decryptField({ ciphertext: e.notes_enc, nonce: e.nonce_notes! }, key)
+          : null
+        setEntry({ id: e.id, title: e.title, site: e.site, username, password, notes, tags: e.tags })
+      } catch (err: any) {
+        setError(err.message)
+      }
+    })()
   }, [id])
 
   async function copy(text: string) {
