@@ -163,3 +163,28 @@ class GenerateIn(BaseModel):
 
 class GenerateOut(BaseModel):
     password: str
+
+
+class HealthReportIn(BaseModel):
+    total_entries: int = Field(ge=0)
+    weak_count: int = Field(ge=0)
+    reused_count: int = Field(ge=0)
+    old_count: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def counts_within_total(self) -> "HealthReportIn":
+        for field in ("weak_count", "reused_count", "old_count"):
+            if getattr(self, field) > self.total_entries:
+                raise ValueError(f"{field} cannot exceed total_entries")
+        return self
+
+
+class HealthReportOut(BaseModel):
+    id: str
+    user_id: str
+    total_entries: int
+    weak_count: int
+    reused_count: int
+    old_count: int
+    created_at: str
+    updated_at: str

@@ -286,6 +286,14 @@ vaultlocal/
 | M5    | Backup/restore, busca, lockout, clipboard-clear      | Checklist de segurança seção 9      |
 | M6    | (Opcional) Migrar para Render + cripto no frontend   | Zero-knowledge E2E                  |
 
+### Health Dashboard (pós-M6)
+
+Painel `/health` que pontua a higiene das senhas do cofre (fracas, reutilizadas,
+antigas) com análise 100% client-side sobre os segredos já descriptografados —
+o servidor só persiste contagens agregadas (1 relatório por usuário, upsert).
+Detalhes de arquitetura, regras, fórmula do score e cortes de MVP em
+`docs/features/health-dashboard.md`.
+
 ## 13. Riscos
 
 | Risco                                          | Mitigação                                   |

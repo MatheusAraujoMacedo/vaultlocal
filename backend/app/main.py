@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from .core.limiter import limiter
-from .routers import auth, entries
+from .routers import auth, entries, health
 
 app = FastAPI(title="VaultLocal API", version="0.1.0")
 
@@ -20,9 +20,10 @@ app.add_middleware(
 
 
 @app.get("/health")
-async def health():
+async def healthcheck():
     return {"status": "ok"}
 
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(entries.router, prefix="/api/v1")
+app.include_router(health.router, prefix="/api/v1")

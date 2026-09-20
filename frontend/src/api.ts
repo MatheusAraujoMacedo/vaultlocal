@@ -58,6 +58,20 @@ export interface EntryBlob extends EntryListItem {
   wrapped_nonce: string
 }
 
+export interface HealthReportPayload {
+  score: number
+  total_entries: number
+  weak_count: number
+  reused_count: number
+  old_count: number
+}
+
+export interface HealthReport extends HealthReportPayload {
+  id: string
+  user_id: string
+  created_at: string
+}
+
 export const api = {
   loginInit: (email: string) =>
     request<{ salt_auth: string; salt_crypto: string }>('/auth/login/init', {
@@ -110,4 +124,23 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ length, use_symbols }),
     }),
+
+  postHealthReport: (report: HealthReportPayload) =>
+    request<{ id: string }>('/health/report', {
+      method: 'POST',
+      body: JSON.stringify(report),
+    }),
+
+  getLatestHealth: async (): Promise<HealthReport | null> => {
+    const token = getToken()
+    const res = await fetch(`${API_BASE}/health/latest`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (res.status === 404) return null
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new Error(err.detail || `HTTP ${res.status}`)
+    }
+    return res.json()
+  },
 }

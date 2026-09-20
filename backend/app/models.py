@@ -40,6 +40,10 @@ class User(Base):
     entries: Mapped[list["VaultEntry"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    health_report: Mapped["HealthReport | None"] = relationship(
+        back_populates="user", cascade="all, delete-orphan", uselist=False
+    )
+
     sessions: Mapped[list["Session"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
@@ -91,3 +95,26 @@ class Session(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="sessions")
+
+
+class HealthReport(Base):
+    __tablename__ = "health_reports"
+
+    id: Mapped[str] = _uuid_pk()
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    total_entries: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    weak_count: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    reused_count: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    old_count: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    user: Mapped[User] = relationship(back_populates="health_report")

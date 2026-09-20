@@ -1,5 +1,5 @@
 import { useEffect, useState, FormEvent } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import {
   generateDataKey, wrapDataKey, unwrapDataKey, encryptField, decryptField, getSessionKek,
@@ -9,6 +9,8 @@ export default function EntryForm() {
   const { id } = useParams<{ id: string }>()
   const isEdit = !!id
   const nav = useNavigate()
+  const [searchParams] = useSearchParams()
+  const issue = searchParams.get('issue')
 
   const [title, setTitle] = useState('')
   const [site, setSite] = useState('')
@@ -79,7 +81,7 @@ export default function EntryForm() {
       } else {
         await api.createEntry(data)
       }
-      nav('/')
+      nav(issue ? '/health' : '/')
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -171,7 +173,11 @@ export default function EntryForm() {
               type="button"
               onClick={generate}
               disabled={generating}
-              className="px-3 py-2 rounded-md border border-stone-300 text-sm text-stone-700 hover:bg-stone-50 transition disabled:opacity-50"
+              className={
+                issue
+                  ? 'px-3 py-2 rounded-md bg-stone-900 text-white text-sm font-medium hover:bg-stone-800 transition disabled:opacity-50'
+                  : 'px-3 py-2 rounded-md border border-stone-300 text-sm text-stone-700 hover:bg-stone-50 transition disabled:opacity-50'
+              }
             >
               {generating ? '…' : 'Gerar'}
             </button>

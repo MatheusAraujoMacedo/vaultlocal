@@ -16,6 +16,13 @@ docker compose up -d --build
 
 Acesse http://127.0.0.1:8080
 
+## Features
+
+- CRUD de entradas com criptografia zero-knowledge no frontend (AES-256-GCM + Argon2id)
+- Gerador de senhas fortes
+- Busca por título/site
+- Health Dashboard (`/health`): score 0-100 do cofre, detecção de senhas fracas/reutilizadas/antigas — ver `docs/features/health-dashboard.md`
+
 ## Dev local (sem Docker)
 
 Backend:

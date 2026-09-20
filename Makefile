@@ -29,3 +29,9 @@ revision:
 
 test:
 	cd backend && ../.venv/bin/python -m pytest -q
+
+test-backend:
+	cd backend && ../.venv/bin/python -m pytest -q
+
+test-frontend:
+	cd frontend && npm test

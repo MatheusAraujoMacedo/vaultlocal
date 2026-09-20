@@ -57,14 +57,15 @@ export async function deriveAuthKey(password: string, saltAuthB64: string): Prom
   return b64encode(raw)
 }
 
-async function importAesKey(raw: Uint8Array | ArrayBufferLike): Promise<CryptoKey> {
+async function importAesKey(raw: Uint8Array | ArrayBufferLike, extractable = false): Promise<CryptoKey> {
   const arr = ensureArrayBuffer(raw instanceof Uint8Array ? raw : new Uint8Array(raw))
-  return crypto.subtle.importKey('raw', arr as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt'])
+  return crypto.subtle.importKey('raw', arr as BufferSource, 'AES-GCM', extractable, ['encrypt', 'decrypt'])
 }
 
 export async function deriveKek(password: string, saltCryptoB64: string): Promise<CryptoKey> {
   const raw = await deriveRawKey(password, saltCryptoB64)
-  return importAesKey(raw)
+  // KEK nunca precisa ser exportada — fica so em memoria como handle
+  return importAesKey(raw, false)
 }
 
 let sessionKek: CryptoKey | null = null
@@ -107,7 +108,8 @@ export async function unwrapDataKey(wrapped: WrappedKey, kek: CryptoKey): Promis
   const raw = ensureArrayBuffer(
     await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce as BufferSource }, kek, ciphertext as BufferSource),
   )
-  return importAesKey(raw)
+  // data_keys precisam ser extractable porque depois sao wrapped novamente ao salvar
+  return importAesKey(raw, true)
 }
 
 export interface EncField {

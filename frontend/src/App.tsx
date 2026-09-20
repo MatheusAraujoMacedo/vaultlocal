@@ -4,6 +4,7 @@ import Register from './pages/Register'
 import Vault from './pages/Vault'
 import EntryDetail from './pages/EntryDetail'
 import EntryForm from './pages/EntryForm'
+import Health from './pages/Health'
 import { useEffect, useState } from 'react'
 
 export default function App() {
@@ -34,6 +35,10 @@ export default function App() {
       <Route
         path="/entry/:id/edit"
         element={authed ? <EntryForm /> : <Navigate to="/login" replace />}
+      />
+      <Route
+        path="/health"
+        element={authed ? <Health /> : <Navigate to="/login" replace />}
       />
     </Routes>
   )
