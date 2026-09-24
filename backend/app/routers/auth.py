@@ -167,11 +167,24 @@ async def mfa_verify(
     user: User = Depends(get_mfa_pending_user),
     db: AsyncSession = Depends(get_db),
 ):
+    now = datetime.now(timezone.utc)
+    locked_until = _aware(user.totp_locked_until)
+    if locked_until and locked_until > now:
+        retry_after = int((locked_until - now).total_seconds())
+        raise HTTPException(429, f"totp locked, try again in {retry_after}s")
+
     if not user.mfa_configured or not user.totp_secret_enc:
         raise HTTPException(400, "totp not configured")
+
     secret = decrypt_totp_secret(user.totp_secret_enc)
     if not pyotp.TOTP(secret).verify(body.totp_code, valid_window=1):
+        user.totp_failed_attempts += 1
+        if user.totp_failed_attempts >= LOCKOUT_THRESHOLD:
+            minutes = lockout_duration_minutes(user.totp_failed_attempts)
+            user.totp_locked_until = now + timedelta(minutes=minutes)
+        await db.commit()
         raise HTTPException(401, "invalid totp code")
+
     user.totp_failed_attempts = 0
     user.totp_locked_until = None
     return await _issue_session_tokens(db, user.id)
