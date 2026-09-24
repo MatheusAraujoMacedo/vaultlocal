@@ -1,5 +1,8 @@
 # Spec — Cofre de Senhas Local (codinome: VaultLocal)
 
+> **Governança & Princípio Central:**  
+> Todas as decisões de arquitetura, implementação e priorização técnica devem passar pelas diretrizes estabelecidas no documento de visão estratégica: [docs/VISAO_ESTRATEGICA.md](file:///home/matheusaraujosami/Documentos/vaultlocal/docs/VISAO_ESTRATEGICA.md).
+
 ## 1. Visão Geral
 
 Gerenciador de senhas self-hosted, rodando 100% local via Docker Compose.
