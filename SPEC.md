@@ -201,7 +201,11 @@ volumes:
 ### 8.2 Nginx
 - `location /` → arquivos estáticos do build React.
 - `location /api/` → proxy_pass `http://api:8000`.
-- Headers de segurança: X-Frame-Options DENY, CSP restritiva, sem CORS aberto.
+- Headers de segurança: `X-Frame-Options: DENY`, `X-Content-Type-Options:
+  nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy` restritiva
+  e **CSP** restritiva — detalhes e justificativas em
+  `docs/deployment/csp.md`. Nota: `script-src` inclui `'wasm-unsafe-eval'`
+  por causa do Argon2id (hash-wasm).
 
 ### 8.3 .env (gitignored)
 ```
