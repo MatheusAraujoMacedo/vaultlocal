@@ -9,6 +9,12 @@ from ..schemas import HealthReportIn, HealthReportOut
 router = APIRouter(prefix="/health", tags=["health"])
 
 
+def _compute_score(weak_count: int, reused_count: int, total_entries: int) -> int:
+    if total_entries == 0:
+        return 100
+    return max(0, min(100, 100 - (15 * weak_count) - (10 * reused_count)))
+
+
 def _to_out(r: HealthReport) -> HealthReportOut:
     return HealthReportOut(
         id=r.id,
@@ -17,6 +23,7 @@ def _to_out(r: HealthReport) -> HealthReportOut:
         weak_count=r.weak_count,
         reused_count=r.reused_count,
         old_count=r.old_count,
+        score=_compute_score(r.weak_count, r.reused_count, r.total_entries),
         created_at=r.created_at.isoformat(),
         updated_at=r.updated_at.isoformat(),
     )

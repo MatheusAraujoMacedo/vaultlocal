@@ -201,5 +201,6 @@ class HealthReportOut(BaseModel):
     weak_count: int
     reused_count: int
     old_count: int
+    score: int
     created_at: str
     updated_at: str

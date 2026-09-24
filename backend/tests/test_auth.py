@@ -5,6 +5,7 @@ import pyotp
 import pytest
 from sqlalchemy import select
 
+from app.config import Settings
 from app.core.security import lockout_duration_minutes, LOCKOUT_THRESHOLD
 from app.core.totp import decrypt_totp_secret
 from app.db import SessionLocal
@@ -12,6 +13,14 @@ from app.models import User, VaultEntry
 
 AUTH_KEY = "sim-auth-key-AAAAAAAAAAAAAAAAAAAA"
 NEW_AUTH_KEY = "sim-auth-key-BBBBBBBBBBBBBBBBBBBB"
+
+
+def test_settings_reject_weak_jwt_secret_in_production(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("JWT_SECRET", "dev-secret-change-me")
+
+    with pytest.raises(ValueError, match="JWT_SECRET"):
+        Settings()
 
 
 def _salt() -> str:

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, EntryListItem } from '../api'
 
 export default function Vault() {
   const [entries, setEntries] = useState<EntryListItem[]>([])
   const [search, setSearch] = useState('')
+  const [selectedTag, setSelectedTag] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const nav = useNavigate()
@@ -51,6 +52,31 @@ export default function Vault() {
     nav('/login')
   }
 
+  const allTags = useMemo(() => {
+    const set = new Set<string>()
+    entries.forEach((e) => {
+      if (e.tags) {
+        e.tags
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean)
+          .forEach((t) => set.add(t))
+      }
+    })
+    return Array.from(set).sort()
+  }, [entries])
+
+  const displayedEntries = useMemo(() => {
+    if (!selectedTag) return entries
+    return entries.filter((e) => {
+      if (!e.tags) return false
+      return e.tags
+        .split(',')
+        .map((t) => t.trim())
+        .includes(selectedTag)
+    })
+  }, [entries, selectedTag])
+
   return (
     <div className="min-h-screen">
       <header className="border-b border-stone-200 bg-white/60 backdrop-blur sticky top-0 z-10">
@@ -82,7 +108,7 @@ export default function Vault() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
-        <div className="mb-6">
+        <div className="mb-4">
           <input
             type="text"
             value={search}
@@ -92,6 +118,37 @@ export default function Vault() {
           />
         </div>
 
+        {allTags.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 mb-6">
+            <span className="text-xs text-stone-400 mr-1 font-medium">Tags:</span>
+            <button
+              type="button"
+              onClick={() => setSelectedTag(null)}
+              className={`text-xs px-2.5 py-1 rounded-full transition ${
+                selectedTag === null
+                  ? 'bg-stone-900 text-white font-medium'
+                  : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+              }`}
+            >
+              Todas
+            </button>
+            {allTags.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+                className={`text-xs px-2.5 py-1 rounded-full transition ${
+                  selectedTag === tag
+                    ? 'bg-stone-900 text-white font-medium'
+                    : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                }`}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        )}
+
         {error && (
           <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2 mb-4">
             {error}
@@ -100,12 +157,14 @@ export default function Vault() {
 
         {loading ? (
           <p className="text-sm text-stone-500 text-center py-12">Carregando…</p>
-        ) : entries.length === 0 ? (
+        ) : displayedEntries.length === 0 ? (
           <div className="text-center py-16 border border-dashed border-stone-300 rounded-lg">
             <p className="text-stone-500 text-sm">
-              {search ? 'Nenhuma entrada encontrada' : 'Seu cofre está vazio'}
+              {search || selectedTag
+                ? 'Nenhuma entrada encontrada'
+                : 'Seu cofre está vazio'}
             </p>
-            {!search && (
+            {!search && !selectedTag && (
               <Link
                 to="/entry/new"
                 className="inline-block mt-3 text-sm font-medium text-stone-900 hover:underline"
@@ -116,7 +175,7 @@ export default function Vault() {
           </div>
         ) : (
           <ul className="divide-y divide-stone-200 border border-stone-200 rounded-lg bg-white overflow-hidden">
-            {entries.map((e) => (
+            {displayedEntries.map((e) => (
               <li key={e.id}>
                 <Link
                   to={`/entry/${e.id}`}
@@ -135,14 +194,27 @@ export default function Vault() {
                     </div>
                     {e.tags && (
                       <div className="ml-4 flex gap-1.5 flex-shrink-0">
-                        {e.tags.split(',').filter(Boolean).map((t) => (
-                          <span
-                            key={t}
-                            className="text-xs px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 border border-stone-200"
-                          >
-                            {t}
-                          </span>
-                        ))}
+                        {e.tags
+                          .split(',')
+                          .map((t) => t.trim())
+                          .filter(Boolean)
+                          .map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={(ev) => {
+                                ev.preventDefault()
+                                setSelectedTag(selectedTag === t ? null : t)
+                              }}
+                              className={`text-xs px-2 py-0.5 rounded-full border transition ${
+                                selectedTag === t
+                                  ? 'bg-stone-900 text-white border-stone-900'
+                                  : 'bg-stone-100 text-stone-600 border-stone-200 hover:bg-stone-200'
+                              }`}
+                            >
+                              {t}
+                            </button>
+                          ))}
                       </div>
                     )}
                   </div>

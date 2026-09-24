@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import secrets
 import string
 from fastapi import APIRouter, Depends, HTTPException
@@ -127,6 +128,7 @@ async def update_entry(
     e.wrapped_data_key = body.wrapped_data_key
     e.wrapped_nonce = body.wrapped_nonce
     e.tags = body.tags
+    e.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(e)
     return _to_out(e)

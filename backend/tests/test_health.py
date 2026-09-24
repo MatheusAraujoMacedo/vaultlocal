@@ -16,6 +16,7 @@ async def test_post_report_creates_new(client, register_and_login):
     assert body["weak_count"] == 2
     assert body["reused_count"] == 1
     assert body["old_count"] == 3
+    assert body["score"] == 100 - (15 * 2) - (10 * 1)  # 60
     assert "id" in body
     assert "created_at" in body
     assert "updated_at" in body

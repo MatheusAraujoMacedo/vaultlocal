@@ -11,7 +11,17 @@ export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(null)
 
   useEffect(() => {
-    setAuthed(!!localStorage.getItem('access_token'))
+    try {
+      const raw = sessionStorage.getItem('vaultlocal_tokens')
+      if (!raw) {
+        setAuthed(false)
+        return
+      }
+      const parsed = JSON.parse(raw) as { access?: string }
+      setAuthed(!!parsed.access)
+    } catch {
+      setAuthed(false)
+    }
   }, [])
 
   if (authed === null) return null

@@ -124,6 +124,14 @@ export default function EntryForm() {
         {isEdit ? 'Editar entrada' : 'Nova entrada'}
       </h1>
 
+      {issue && (
+        <div className="p-3.5 mb-5 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-800 flex items-center justify-between">
+          <span>
+            Problema detectado na auditoria ({issue}). Use o botão <strong>Gerar</strong> para definir uma nova senha forte.
+          </span>
+        </div>
+      )}
+
       <form onSubmit={submit} className="space-y-5">
         <div>
           <label className="block text-sm font-medium text-stone-700 mb-1.5">Título</label>

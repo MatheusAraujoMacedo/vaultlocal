@@ -90,6 +90,8 @@ async def test_update_entry_changes_blobs(client, register_and_login):
     assert updated["title"] == "New"
     assert updated["username_enc"] == ENC_USERNAME_2
     assert updated["tags"] == "updated"
+    assert "updated_at" in updated
+    assert updated["updated_at"] >= resp.json()["created_at"]
 
 
 async def test_delete_entry_removes_it(client, register_and_login):

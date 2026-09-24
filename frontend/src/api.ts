@@ -1,19 +1,37 @@
 import { clearSessionKek } from './crypto'
 
 const API_BASE = '/api/v1'
+const TOKENS_KEY = 'vaultlocal_tokens'
+
+type TokenBundle = {
+  access: string | null
+  refresh: string | null
+}
+
+function readTokens(): TokenBundle {
+  try {
+    const raw = sessionStorage.getItem(TOKENS_KEY)
+    if (!raw) return { access: null, refresh: null }
+    const parsed = JSON.parse(raw) as Partial<TokenBundle>
+    return {
+      access: typeof parsed.access === 'string' ? parsed.access : null,
+      refresh: typeof parsed.refresh === 'string' ? parsed.refresh : null,
+    }
+  } catch {
+    return { access: null, refresh: null }
+  }
+}
 
 function getToken(): string | null {
-  return localStorage.getItem('access_token')
+  return readTokens().access
 }
 
 export function setTokens(access: string, refresh: string) {
-  localStorage.setItem('access_token', access)
-  localStorage.setItem('refresh_token', refresh)
+  sessionStorage.setItem(TOKENS_KEY, JSON.stringify({ access, refresh }))
 }
 
 export function clearTokens() {
-  localStorage.removeItem('access_token')
-  localStorage.removeItem('refresh_token')
+  sessionStorage.removeItem(TOKENS_KEY)
 }
 
 async function request<T>(
@@ -127,7 +145,7 @@ export const api = {
     }, false),
 
   logout: () => {
-    const refresh = localStorage.getItem('refresh_token')
+    const refresh = readTokens().refresh
     if (refresh) {
       request('/auth/logout', {
         method: 'POST',

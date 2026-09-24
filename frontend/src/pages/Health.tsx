@@ -39,6 +39,7 @@ export default function Health() {
   const [delta, setDelta] = useState<number | null>(null)
   const [counts, setCounts] = useState({ weak: 0, reused: 0, old: 0 })
   const [issues, setIssues] = useState<IssueView[]>([])
+  const [filterRule, setFilterRule] = useState<string | null>(null)
 
   useEffect(() => {
     ;(async () => {
@@ -176,25 +177,71 @@ export default function Health() {
       </header>
 
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
-        <div className="border border-stone-200 rounded-lg bg-white p-4">
+        <button
+          type="button"
+          onClick={() => setFilterRule(filterRule === 'weak-password' ? null : 'weak-password')}
+          className={`border rounded-lg p-4 text-left transition ${
+            filterRule === 'weak-password'
+              ? 'border-stone-900 bg-stone-50 ring-2 ring-stone-900'
+              : 'border-stone-200 bg-white hover:border-stone-300'
+          }`}
+        >
           <p className="text-sm text-stone-500">Senhas fracas</p>
           <p className="mt-1 text-2xl font-semibold text-stone-900 tabular-nums">
             {counts.weak}
           </p>
-        </div>
-        <div className="border border-stone-200 rounded-lg bg-white p-4">
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilterRule(filterRule === 'reused-password' ? null : 'reused-password')}
+          className={`border rounded-lg p-4 text-left transition ${
+            filterRule === 'reused-password'
+              ? 'border-stone-900 bg-stone-50 ring-2 ring-stone-900'
+              : 'border-stone-200 bg-white hover:border-stone-300'
+          }`}
+        >
           <p className="text-sm text-stone-500">Senhas reutilizadas</p>
           <p className="mt-1 text-2xl font-semibold text-stone-900 tabular-nums">
             {counts.reused}
           </p>
-        </div>
-        <div className="border border-stone-200 rounded-lg bg-white p-4">
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilterRule(filterRule === 'old-password' ? null : 'old-password')}
+          className={`border rounded-lg p-4 text-left transition ${
+            filterRule === 'old-password'
+              ? 'border-stone-900 bg-stone-50 ring-2 ring-stone-900'
+              : 'border-stone-200 bg-white hover:border-stone-300'
+          }`}
+        >
           <p className="text-sm text-stone-500">Senhas antigas</p>
           <p className="mt-1 text-2xl font-semibold text-stone-900 tabular-nums">
             {counts.old}
           </p>
-        </div>
+        </button>
       </section>
+
+      {filterRule && (
+        <div className="flex items-center justify-between mb-4 px-1">
+          <span className="text-xs text-stone-500">
+            Filtrando por:{' '}
+            <strong className="text-stone-900">
+              {filterRule === 'weak-password'
+                ? 'Senhas fracas'
+                : filterRule === 'reused-password'
+                  ? 'Senhas reutilizadas'
+                  : 'Senhas antigas'}
+            </strong>
+          </span>
+          <button
+            type="button"
+            onClick={() => setFilterRule(null)}
+            className="text-xs text-stone-600 hover:text-stone-900 underline"
+          >
+            Limpar filtro
+          </button>
+        </div>
+      )}
 
       {issues.length === 0 ? (
         <div className="border border-stone-200 rounded-lg bg-white p-8 text-center">
@@ -204,24 +251,26 @@ export default function Health() {
         </div>
       ) : (
         <section className="border border-stone-200 rounded-lg bg-white divide-y divide-stone-200">
-          {issues.map((iss, i) => (
-            <div key={`${iss.entryId}-${iss.ruleId}-${i}`} className="p-4 flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-stone-900 truncate">
-                  {iss.entryTitle}
-                </p>
-                <p className={`mt-0.5 text-sm ${severityClass(iss.severity)}`}>
-                  {iss.message}
-                </p>
+          {issues
+            .filter((iss) => (filterRule ? iss.ruleId === filterRule : true))
+            .map((iss, i) => (
+              <div key={`${iss.entryId}-${iss.ruleId}-${i}`} className="p-4 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-stone-900 truncate">
+                    {iss.entryTitle}
+                  </p>
+                  <p className={`mt-0.5 text-sm ${severityClass(iss.severity)}`}>
+                    {iss.message}
+                  </p>
+                </div>
+                <Link
+                  to={`/entry/${iss.entryId}/edit?issue=${encodeURIComponent(iss.ruleId)}`}
+                  className="shrink-0 px-3 py-1.5 rounded-md border border-stone-300 text-sm text-stone-700 hover:bg-stone-50 transition"
+                >
+                  Trocar agora
+                </Link>
               </div>
-              <Link
-                to={`/entry/${iss.entryId}/edit?issue=${encodeURIComponent(iss.ruleId)}`}
-                className="shrink-0 px-3 py-1.5 rounded-md border border-stone-300 text-sm text-stone-700 hover:bg-stone-50 transition"
-              >
-                Trocar agora
-              </Link>
-            </div>
-          ))}
+            ))}
         </section>
       )}
     </div>

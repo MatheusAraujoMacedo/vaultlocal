@@ -65,7 +65,8 @@ async def login_init(body: LoginInitIn, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/register", status_code=201)
-async def register(body: RegisterIn, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/minute")
+async def register(request: Request, body: RegisterIn, db: AsyncSession = Depends(get_db)):
     existing = await db.scalar(select(User).where(User.email == body.email))
     if existing:
         raise HTTPException(409, "email already registered")
@@ -116,6 +117,13 @@ async def login(request: Request, body: LoginIn, db: AsyncSession = Depends(get_
 
 
 async def _issue_session_tokens(db: AsyncSession, user_id: str) -> TokenOut:
+    # Cleanup expired sessions for this user
+    expired_sessions = list(await db.scalars(
+        select(Session).where(Session.user_id == user_id, Session.expires_at < datetime.now(timezone.utc))
+    ))
+    for s in expired_sessions:
+        await db.delete(s)
+
     access = create_access_token(user_id)
     refresh = create_refresh_token(user_id)
     session = Session(
