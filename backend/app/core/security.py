@@ -52,6 +52,18 @@ def create_refresh_token(subject: str) -> str:
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
+def create_mfa_token(subject: str) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": subject,
+        "iat": now,
+        "exp": now + timedelta(minutes=5),
+        "type": "mfa_pending",
+        "jti": secrets.token_hex(16),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
 def verify_token(token: str, expected_type: str = "access") -> str:
     """Returns user id (sub) if valid, else raises."""
     from jose import JWTError
