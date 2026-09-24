@@ -1,5 +1,5 @@
-import { useState, FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useState, FormEvent, useEffect } from 'react'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import QRCode from 'qrcode'
 import { api, setTokens } from '../api'
 import { deriveAuthKey, deriveKek, setSessionKek, clearSessionKek } from '../crypto'
@@ -10,6 +10,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [info, setInfo] = useState('')
   const [loading, setLoading] = useState(false)
   const [stage, setStage] = useState<Stage>('credentials')
   const [mfaToken, setMfaToken] = useState('')
@@ -18,6 +19,18 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
   const [totpCode, setTotpCode] = useState('')
   const [kek, setKek] = useState<CryptoKey | null>(null)
   const nav = useNavigate()
+  const location = useLocation()
+
+  useEffect(() => {
+    const state = location.state as { registered?: boolean; email?: string } | null
+    if (state?.registered) {
+      setInfo('Conta criada. Entre com seu e-mail e senha-mestra para configurar o autenticador.')
+      if (state.email) setEmail(state.email)
+      // limpa o state para não reaparecer em navegação
+      nav(location.pathname, { replace: true, state: null })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function submitCredentials(e: FormEvent) {
     e.preventDefault()
@@ -53,6 +66,18 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     nav('/')
   }
 
+  function backToCredentials(msg?: string) {
+    setStage('credentials')
+    setError(msg ?? '')
+    setTotpCode('')
+    setMfaToken('')
+  }
+
+  function isExpiredMfaErr(err: any): boolean {
+    const msg: string = err?.message ?? ''
+    return msg.includes('expired') || msg.includes('invalid or expired') || msg.includes('mfa token')
+  }
+
   async function submitTotpSetup(e: FormEvent) {
     e.preventDefault()
     setError('')
@@ -61,7 +86,11 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
       const tokens = await api.totpConfirm(mfaToken, totpCode)
       completeLogin(tokens)
     } catch (err: any) {
-      setError(err.message || 'Código inválido')
+      if (isExpiredMfaErr(err)) {
+        backToCredentials('Sessão expirada. Identifique-se novamente.')
+      } else {
+        setError(err.message || 'Código inválido')
+      }
     } finally {
       setLoading(false)
     }
@@ -75,7 +104,11 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
       const tokens = await api.mfaVerify(mfaToken, totpCode)
       completeLogin(tokens)
     } catch (err: any) {
-      setError(err.message || 'Código inválido')
+      if (isExpiredMfaErr(err)) {
+        backToCredentials('Sessão expirada. Identifique-se novamente.')
+      } else {
+        setError(err.message || 'Código inválido')
+      }
     } finally {
       setLoading(false)
     }
@@ -101,7 +134,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
               inputMode="numeric"
               required
               value={totpCode}
-              onChange={(e) => setTotpCode(e.target.value)}
+              onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               className="w-full px-3 py-2 rounded-md border border-stone-300 bg-white text-stone-900 text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition"
               placeholder="000000"
               maxLength={6}
@@ -117,6 +150,13 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
               className="w-full py-2.5 px-4 rounded-md bg-stone-900 text-white text-sm font-medium hover:bg-stone-800 active:bg-stone-950 disabled:opacity-50 transition"
             >
               {loading ? 'Confirmando…' : 'Confirmar'}
+            </button>
+            <button
+              type="button"
+              onClick={() => backToCredentials()}
+              className="w-full text-center text-xs text-stone-500 hover:text-stone-900 mt-3 transition"
+            >
+              ← Voltar para identificação
             </button>
           </form>
         </div>
@@ -140,7 +180,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
               inputMode="numeric"
               required
               value={totpCode}
-              onChange={(e) => setTotpCode(e.target.value)}
+              onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               className="w-full px-3 py-2 rounded-md border border-stone-300 bg-white text-stone-900 text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition"
               placeholder="000000"
               maxLength={6}
@@ -156,6 +196,13 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
               className="w-full py-2.5 px-4 rounded-md bg-stone-900 text-white text-sm font-medium hover:bg-stone-800 active:bg-stone-950 disabled:opacity-50 transition"
             >
               {loading ? 'Entrando…' : 'Entrar'}
+            </button>
+            <button
+              type="button"
+              onClick={() => backToCredentials()}
+              className="w-full text-center text-xs text-stone-500 hover:text-stone-900 mt-3 transition"
+            >
+              ← Voltar para identificação
             </button>
           </form>
         </div>
@@ -199,6 +246,11 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
               placeholder="••••••••••••"
             />
           </div>
+          {info && (
+            <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2">
+              {info}
+            </p>
+          )}
           {error && (
             <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
               {error}

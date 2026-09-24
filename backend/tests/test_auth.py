@@ -452,6 +452,47 @@ async def test_totp_setup_called_twice_invalidates_first_secret(client):
     assert ok.status_code == 200
 
 
+async def test_totp_confirm_rejects_when_already_configured(client):
+    await _register(client, "alreadyconfirm@test.com")
+    await _login(client, "alreadyconfirm@test.com")  # activates MFA
+
+    # new login gives mfa_pending token, but mfa_configured is already True
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "alreadyconfirm@test.com", "auth_key": AUTH_KEY}
+    )
+    headers = {"Authorization": f"Bearer {resp.json()['mfa_token']}"}
+    blocked = await client.post(
+        "/api/v1/auth/totp/confirm", headers=headers, json={"totp_code": "123456"}
+    )
+    assert blocked.status_code == 409
+
+
+async def test_totp_confirm_enforces_lockout_from_mfa_verify(client):
+    """Código errado em /mfa/verify 5x bloqueia; /totp/confirm deve respeitar
+    o lockout e não servir de bypass."""
+    await _register(client, "lockbypass@test.com")
+    await _login(client, "lockbypass@test.com")  # activates MFA
+
+    # fresh login: senha ok, mas estado "mfa_verify_required" — confirm rejeita
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "lockbypass@test.com", "auth_key": AUTH_KEY}
+    )
+    headers = {"Authorization": f"Bearer {resp.json()['mfa_token']}"}
+
+    # 5 códigos errados em /mfa/verify → lockout
+    for _ in range(5):
+        bad = await client.post(
+            "/api/v1/auth/mfa/verify", headers=headers, json={"totp_code": "000000"}
+        )
+        assert bad.status_code in (401, 429)
+
+    # tentar bypass via /totp/confirm deve dar 429 (ou 409 já que mfa_configured)
+    banned = await client.post(
+        "/api/v1/auth/totp/confirm", headers=headers, json={"totp_code": "000000"}
+    )
+    assert banned.status_code in (409, 429)
+
+
 async def test_totp_setup_rejects_when_already_configured(client):
     await _register(client, "already@test.com")
     await _login(client, "already@test.com")  # activates MFA

@@ -34,7 +34,7 @@ export default function Register() {
       await api.register(email, saltAuth, saltCrypto, authKey)
       // Cofre exige TOTP configurado antes de abrir (RFC Fase 1): o fluxo de
       // configuração vive na tela de login, não aqui.
-      nav('/login')
+      nav('/login', { state: { registered: true, email } })
     } catch (err: any) {
       setError(err.message || 'Erro ao criar conta')
     } finally {
