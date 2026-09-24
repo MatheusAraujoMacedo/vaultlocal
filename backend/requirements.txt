@@ -12,3 +12,4 @@ slowapi==0.1.9
 aiosqlite==0.20.0
 alembic==1.13.2
 email-validator==2.2.0
+pyotp==2.9.0

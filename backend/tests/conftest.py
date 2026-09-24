@@ -7,6 +7,7 @@ _tmp_dir = tempfile.mkdtemp(prefix="vaultlocal_test_")
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_tmp_dir}/test.db"
 os.environ["JWT_SECRET"] = "test-secret-not-for-prod"
 
+import pyotp
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -43,8 +44,19 @@ def register_and_login(client):
         )
         assert resp.status_code == 201, resp.text
         user_id = resp.json()["id"]
+
         resp = await client.post("/api/v1/auth/login", json={"email": email, "auth_key": auth_key})
         assert resp.status_code == 200, resp.text
-        return {**resp.json(), "user_id": user_id}
+        mfa_headers = {"Authorization": f"Bearer {resp.json()['mfa_token']}"}
+
+        setup = await client.post("/api/v1/auth/totp/setup", headers=mfa_headers)
+        assert setup.status_code == 200, setup.text
+        code = pyotp.TOTP(setup.json()["secret"]).now()
+
+        confirm = await client.post(
+            "/api/v1/auth/totp/confirm", headers=mfa_headers, json={"totp_code": code}
+        )
+        assert confirm.status_code == 200, confirm.text
+        return {**confirm.json(), "user_id": user_id}
 
     return _do

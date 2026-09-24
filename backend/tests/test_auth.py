@@ -1,10 +1,12 @@
 import base64
 import secrets
 
+import pyotp
 import pytest
 from sqlalchemy import select
 
 from app.core.security import lockout_duration_minutes, LOCKOUT_THRESHOLD
+from app.core.totp import decrypt_totp_secret
 from app.db import SessionLocal
 from app.models import User, VaultEntry
 
@@ -29,7 +31,15 @@ async def _register(client, email: str, auth_key: str = AUTH_KEY) -> dict:
 async def _login(client, email: str, auth_key: str = AUTH_KEY) -> dict:
     resp = await client.post("/api/v1/auth/login", json={"email": email, "auth_key": auth_key})
     assert resp.status_code == 200, resp.text
-    return resp.json()
+    headers = {"Authorization": f"Bearer {resp.json()['mfa_token']}"}
+    setup = await client.post("/api/v1/auth/totp/setup", headers=headers)
+    assert setup.status_code == 200, setup.text
+    code = pyotp.TOTP(setup.json()["secret"]).now()
+    confirm = await client.post(
+        "/api/v1/auth/totp/confirm", headers=headers, json={"totp_code": code}
+    )
+    assert confirm.status_code == 200, confirm.text
+    return confirm.json()
 
 
 async def _create_entry_directly(user_id: str, **overrides) -> str:
@@ -108,6 +118,76 @@ async def test_login_success_returns_tokens(client):
     tokens = await _login(client, "carol@test.com")
     assert tokens["access_token"]
     assert tokens["refresh_token"]
+
+
+async def test_login_new_user_returns_mfa_setup_required(client):
+    await _register(client, "newmfa@test.com")
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "newmfa@test.com", "auth_key": AUTH_KEY}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "mfa_setup_required"
+    assert body["mfa_token"]
+
+
+async def test_totp_setup_then_confirm_activates_mfa_and_issues_tokens(client):
+    await _register(client, "activate@test.com")
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "activate@test.com", "auth_key": AUTH_KEY}
+    )
+    mfa_token = resp.json()["mfa_token"]
+    headers = {"Authorization": f"Bearer {mfa_token}"}
+
+    setup = await client.post("/api/v1/auth/totp/setup", headers=headers)
+    assert setup.status_code == 200
+    secret = setup.json()["secret"]
+    assert setup.json()["otpauth_uri"].startswith("otpauth://totp/")
+
+    code = pyotp.TOTP(secret).now()
+    confirm = await client.post(
+        "/api/v1/auth/totp/confirm", headers=headers, json={"totp_code": code}
+    )
+    assert confirm.status_code == 200
+    assert confirm.json()["access_token"]
+    assert confirm.json()["refresh_token"]
+
+    async with SessionLocal() as db:
+        user = await db.scalar(select(User).where(User.email == "activate@test.com"))
+        assert user.mfa_configured is True
+        assert user.totp_secret_enc is not None
+
+
+async def test_login_configured_user_returns_mfa_verify_required(client):
+    await _register(client, "verifyflow@test.com")
+    tokens = await _login(client, "verifyflow@test.com")  # completes setup via helper
+    assert tokens["access_token"]
+
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "verifyflow@test.com", "auth_key": AUTH_KEY}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "mfa_verify_required"
+
+
+async def test_mfa_verify_with_correct_code_issues_tokens(client):
+    await _register(client, "verifycode@test.com")
+    await _login(client, "verifycode@test.com")  # activates MFA
+
+    async with SessionLocal() as db:
+        user = await db.scalar(select(User).where(User.email == "verifycode@test.com"))
+        secret = decrypt_totp_secret(user.totp_secret_enc)
+
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "verifycode@test.com", "auth_key": AUTH_KEY}
+    )
+    mfa_token = resp.json()["mfa_token"]
+    headers = {"Authorization": f"Bearer {mfa_token}"}
+
+    code = pyotp.TOTP(secret).now()
+    resp2 = await client.post("/api/v1/auth/mfa/verify", headers=headers, json={"totp_code": code})
+    assert resp2.status_code == 200
+    assert resp2.json()["access_token"]
 
 
 async def test_login_wrong_auth_key_rejected(client):
