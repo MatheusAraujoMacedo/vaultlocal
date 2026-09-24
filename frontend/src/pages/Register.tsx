@@ -1,7 +1,7 @@
 import { useState, FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, setTokens } from '../api'
-import { deriveAuthKey, deriveKek, randomSaltB64, isCommonPassword, setSessionKek } from '../crypto'
+import { api } from '../api'
+import { deriveAuthKey, randomSaltB64, isCommonPassword } from '../crypto'
 
 export default function Register() {
   const [email, setEmail] = useState('')
@@ -32,11 +32,9 @@ export default function Register() {
       const saltCrypto = randomSaltB64()
       const authKey = await deriveAuthKey(password, saltAuth)
       await api.register(email, saltAuth, saltCrypto, authKey)
-      const res = await api.login(email, authKey)
-      setTokens(res.access_token, res.refresh_token)
-      const kek = await deriveKek(password, saltCrypto)
-      setSessionKek(kek)
-      nav('/')
+      // Cofre exige TOTP configurado antes de abrir (RFC Fase 1): o fluxo de
+      // configuração vive na tela de login, não aqui.
+      nav('/login', { state: { registered: true, email } })
     } catch (err: any) {
       setError(err.message || 'Erro ao criar conta')
     } finally {

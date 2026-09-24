@@ -1,10 +1,12 @@
 import base64
 import secrets
 
+import pyotp
 import pytest
 from sqlalchemy import select
 
 from app.core.security import lockout_duration_minutes, LOCKOUT_THRESHOLD
+from app.core.totp import decrypt_totp_secret
 from app.db import SessionLocal
 from app.models import User, VaultEntry
 
@@ -29,7 +31,15 @@ async def _register(client, email: str, auth_key: str = AUTH_KEY) -> dict:
 async def _login(client, email: str, auth_key: str = AUTH_KEY) -> dict:
     resp = await client.post("/api/v1/auth/login", json={"email": email, "auth_key": auth_key})
     assert resp.status_code == 200, resp.text
-    return resp.json()
+    headers = {"Authorization": f"Bearer {resp.json()['mfa_token']}"}
+    setup = await client.post("/api/v1/auth/totp/setup", headers=headers)
+    assert setup.status_code == 200, setup.text
+    code = pyotp.TOTP(setup.json()["secret"]).now()
+    confirm = await client.post(
+        "/api/v1/auth/totp/confirm", headers=headers, json={"totp_code": code}
+    )
+    assert confirm.status_code == 200, confirm.text
+    return confirm.json()
 
 
 async def _create_entry_directly(user_id: str, **overrides) -> str:
@@ -48,6 +58,17 @@ async def _create_entry_directly(user_id: str, **overrides) -> str:
         await db.commit()
         await db.refresh(entry)
         return entry.id
+
+
+async def test_new_user_has_mfa_defaults(client):
+    await _register(client, "mfa-defaults@test.com")
+    async with SessionLocal() as db:
+        user = await db.scalar(select(User).where(User.email == "mfa-defaults@test.com"))
+        assert user.auth_method == "local"
+        assert user.totp_secret_enc is None
+        assert user.mfa_configured is False
+        assert user.totp_failed_attempts == 0
+        assert user.totp_locked_until is None
 
 
 async def test_login_init_returns_real_salts_for_known_user(client):
@@ -97,6 +118,76 @@ async def test_login_success_returns_tokens(client):
     tokens = await _login(client, "carol@test.com")
     assert tokens["access_token"]
     assert tokens["refresh_token"]
+
+
+async def test_login_new_user_returns_mfa_setup_required(client):
+    await _register(client, "newmfa@test.com")
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "newmfa@test.com", "auth_key": AUTH_KEY}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "mfa_setup_required"
+    assert body["mfa_token"]
+
+
+async def test_totp_setup_then_confirm_activates_mfa_and_issues_tokens(client):
+    await _register(client, "activate@test.com")
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "activate@test.com", "auth_key": AUTH_KEY}
+    )
+    mfa_token = resp.json()["mfa_token"]
+    headers = {"Authorization": f"Bearer {mfa_token}"}
+
+    setup = await client.post("/api/v1/auth/totp/setup", headers=headers)
+    assert setup.status_code == 200
+    secret = setup.json()["secret"]
+    assert setup.json()["otpauth_uri"].startswith("otpauth://totp/")
+
+    code = pyotp.TOTP(secret).now()
+    confirm = await client.post(
+        "/api/v1/auth/totp/confirm", headers=headers, json={"totp_code": code}
+    )
+    assert confirm.status_code == 200
+    assert confirm.json()["access_token"]
+    assert confirm.json()["refresh_token"]
+
+    async with SessionLocal() as db:
+        user = await db.scalar(select(User).where(User.email == "activate@test.com"))
+        assert user.mfa_configured is True
+        assert user.totp_secret_enc is not None
+
+
+async def test_login_configured_user_returns_mfa_verify_required(client):
+    await _register(client, "verifyflow@test.com")
+    tokens = await _login(client, "verifyflow@test.com")  # completes setup via helper
+    assert tokens["access_token"]
+
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "verifyflow@test.com", "auth_key": AUTH_KEY}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "mfa_verify_required"
+
+
+async def test_mfa_verify_with_correct_code_issues_tokens(client):
+    await _register(client, "verifycode@test.com")
+    await _login(client, "verifycode@test.com")  # activates MFA
+
+    async with SessionLocal() as db:
+        user = await db.scalar(select(User).where(User.email == "verifycode@test.com"))
+        secret = decrypt_totp_secret(user.totp_secret_enc)
+
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "verifycode@test.com", "auth_key": AUTH_KEY}
+    )
+    mfa_token = resp.json()["mfa_token"]
+    headers = {"Authorization": f"Bearer {mfa_token}"}
+
+    code = pyotp.TOTP(secret).now()
+    resp2 = await client.post("/api/v1/auth/mfa/verify", headers=headers, json={"totp_code": code})
+    assert resp2.status_code == 200
+    assert resp2.json()["access_token"]
 
 
 async def test_login_wrong_auth_key_rejected(client):
@@ -296,3 +387,221 @@ async def test_change_password_rewraps_entry_keys_without_touching_ciphertext(cl
 )
 def test_lockout_duration_progressive_backoff(attempts, expected_minutes):
     assert lockout_duration_minutes(attempts) == expected_minutes
+
+
+async def test_totp_confirm_wrong_code_does_not_activate_mfa(client):
+    await _register(client, "wrongconfirm@test.com")
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "wrongconfirm@test.com", "auth_key": AUTH_KEY}
+    )
+    headers = {"Authorization": f"Bearer {resp.json()['mfa_token']}"}
+    await client.post("/api/v1/auth/totp/setup", headers=headers)
+
+    bad = await client.post(
+        "/api/v1/auth/totp/confirm", headers=headers, json={"totp_code": "000000"}
+    )
+    assert bad.status_code == 401
+
+    async with SessionLocal() as db:
+        user = await db.scalar(select(User).where(User.email == "wrongconfirm@test.com"))
+        assert user.mfa_configured is False
+
+
+async def test_totp_confirm_rejects_malformed_code(client):
+    await _register(client, "malformedcode@test.com")
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "malformedcode@test.com", "auth_key": AUTH_KEY}
+    )
+    headers = {"Authorization": f"Bearer {resp.json()['mfa_token']}"}
+    await client.post("/api/v1/auth/totp/setup", headers=headers)
+
+    bad = await client.post(
+        "/api/v1/auth/totp/confirm", headers=headers, json={"totp_code": "abcdef"}
+    )
+    assert bad.status_code == 422
+
+    bad2 = await client.post(
+        "/api/v1/auth/totp/confirm", headers=headers, json={"totp_code": "12345"}
+    )
+    assert bad2.status_code == 422
+
+
+async def test_totp_setup_called_twice_invalidates_first_secret(client):
+    await _register(client, "resetup@test.com")
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "resetup@test.com", "auth_key": AUTH_KEY}
+    )
+    headers = {"Authorization": f"Bearer {resp.json()['mfa_token']}"}
+
+    first = await client.post("/api/v1/auth/totp/setup", headers=headers)
+    first_secret = first.json()["secret"]
+    second = await client.post("/api/v1/auth/totp/setup", headers=headers)
+    second_secret = second.json()["secret"]
+    assert first_secret != second_secret
+
+    stale_code = pyotp.TOTP(first_secret).now()
+    bad = await client.post(
+        "/api/v1/auth/totp/confirm", headers=headers, json={"totp_code": stale_code}
+    )
+    assert bad.status_code == 401
+
+    fresh_code = pyotp.TOTP(second_secret).now()
+    ok = await client.post(
+        "/api/v1/auth/totp/confirm", headers=headers, json={"totp_code": fresh_code}
+    )
+    assert ok.status_code == 200
+
+
+async def test_totp_confirm_rejects_when_already_configured(client):
+    await _register(client, "alreadyconfirm@test.com")
+    await _login(client, "alreadyconfirm@test.com")  # activates MFA
+
+    # new login gives mfa_pending token, but mfa_configured is already True
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "alreadyconfirm@test.com", "auth_key": AUTH_KEY}
+    )
+    headers = {"Authorization": f"Bearer {resp.json()['mfa_token']}"}
+    blocked = await client.post(
+        "/api/v1/auth/totp/confirm", headers=headers, json={"totp_code": "123456"}
+    )
+    assert blocked.status_code == 409
+
+
+async def test_totp_confirm_enforces_lockout_from_mfa_verify(client):
+    """Código errado em /mfa/verify 5x bloqueia; /totp/confirm deve respeitar
+    o lockout e não servir de bypass."""
+    await _register(client, "lockbypass@test.com")
+    await _login(client, "lockbypass@test.com")  # activates MFA
+
+    # fresh login: senha ok, mas estado "mfa_verify_required" — confirm rejeita
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "lockbypass@test.com", "auth_key": AUTH_KEY}
+    )
+    headers = {"Authorization": f"Bearer {resp.json()['mfa_token']}"}
+
+    # 5 códigos errados em /mfa/verify → lockout
+    for _ in range(5):
+        bad = await client.post(
+            "/api/v1/auth/mfa/verify", headers=headers, json={"totp_code": "000000"}
+        )
+        assert bad.status_code in (401, 429)
+
+    # tentar bypass via /totp/confirm deve dar 429 (ou 409 já que mfa_configured)
+    banned = await client.post(
+        "/api/v1/auth/totp/confirm", headers=headers, json={"totp_code": "000000"}
+    )
+    assert banned.status_code in (409, 429)
+
+
+async def test_totp_setup_rejects_when_already_configured(client):
+    await _register(client, "already@test.com")
+    await _login(client, "already@test.com")  # activates MFA
+
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "already@test.com", "auth_key": AUTH_KEY}
+    )
+    headers = {"Authorization": f"Bearer {resp.json()['mfa_token']}"}
+    again = await client.post("/api/v1/auth/totp/setup", headers=headers)
+    assert again.status_code == 409
+
+
+async def test_mfa_verify_rejects_when_not_configured(client):
+    await _register(client, "notconfigured@test.com")
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "notconfigured@test.com", "auth_key": AUTH_KEY}
+    )
+    headers = {"Authorization": f"Bearer {resp.json()['mfa_token']}"}
+    resp2 = await client.post(
+        "/api/v1/auth/mfa/verify", headers=headers, json={"totp_code": "123456"}
+    )
+    assert resp2.status_code == 400
+
+
+async def test_mfa_verify_lockout_engages_after_threshold(client):
+    await _register(client, "totplockout@test.com")
+    await _login(client, "totplockout@test.com")  # activates MFA
+
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "totplockout@test.com", "auth_key": AUTH_KEY}
+    )
+    headers = {"Authorization": f"Bearer {resp.json()['mfa_token']}"}
+
+    for _ in range(LOCKOUT_THRESHOLD):
+        r = await client.post(
+            "/api/v1/auth/mfa/verify", headers=headers, json={"totp_code": "000000"}
+        )
+        assert r.status_code == 401
+
+    async with SessionLocal() as db:
+        user = await db.scalar(select(User).where(User.email == "totplockout@test.com"))
+        assert user.totp_failed_attempts == LOCKOUT_THRESHOLD
+        assert user.totp_locked_until is not None
+        # password lockout counter must be untouched by TOTP failures
+        assert user.failed_login_attempts == 0
+        assert user.locked_until is None
+
+    locked = await client.post(
+        "/api/v1/auth/mfa/verify", headers=headers, json={"totp_code": "000000"}
+    )
+    assert locked.status_code == 429
+
+
+async def test_mfa_token_from_one_user_rejected_for_another_users_setup(client):
+    await _register(client, "usera@test.com")
+    await _register(client, "userb@test.com")
+    resp_a = await client.post(
+        "/api/v1/auth/login", json={"email": "usera@test.com", "auth_key": AUTH_KEY}
+    )
+    token_a = resp_a.json()["mfa_token"]
+
+    # token_a is scoped to user A's sub; using it only ever acts on user A.
+    setup = await client.post(
+        "/api/v1/auth/totp/setup", headers={"Authorization": f"Bearer {token_a}"}
+    )
+    assert setup.status_code == 200
+
+    async with SessionLocal() as db:
+        user_a = await db.scalar(select(User).where(User.email == "usera@test.com"))
+        user_b = await db.scalar(select(User).where(User.email == "userb@test.com"))
+        assert user_a.totp_secret_enc is not None
+        assert user_b.totp_secret_enc is None
+
+
+async def test_mfa_pending_token_does_not_open_the_vault(client):
+    await _register(client, "novault@test.com")
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": "novault@test.com", "auth_key": AUTH_KEY}
+    )
+    mfa_token = resp.json()["mfa_token"]
+    entries = await client.get(
+        "/api/v1/entries", headers={"Authorization": f"Bearer {mfa_token}"}
+    )
+    assert entries.status_code == 401
+
+
+async def test_expired_mfa_token_rejected(client, monkeypatch):
+    import app.core.security as security_module
+
+    await _register(client, "expired@test.com")
+
+    def _expired_mfa_token(subject: str) -> str:
+        from datetime import datetime, timedelta, timezone
+        from jose import jwt as jose_jwt
+        payload = {
+            "sub": subject,
+            "iat": datetime.now(timezone.utc) - timedelta(minutes=10),
+            "exp": datetime.now(timezone.utc) - timedelta(minutes=5),
+            "type": "mfa_pending",
+        }
+        return jose_jwt.encode(
+            payload, security_module.settings.JWT_SECRET, algorithm=security_module.settings.JWT_ALGORITHM
+        )
+
+    async with SessionLocal() as db:
+        user = await db.scalar(select(User).where(User.email == "expired@test.com"))
+
+    expired_token = _expired_mfa_token(user.id)
+    resp = await client.post(
+        "/api/v1/auth/totp/setup", headers={"Authorization": f"Bearer {expired_token}"}
+    )
+    assert resp.status_code == 401

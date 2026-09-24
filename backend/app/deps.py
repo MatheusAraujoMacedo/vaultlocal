@@ -27,3 +27,18 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=401, detail="user not found")
     return user
+
+
+async def get_mfa_pending_user(
+    creds: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    token = creds.credentials
+    try:
+        user_id = verify_token(token, "mfa_pending")
+    except ValueError:
+        raise HTTPException(status_code=401, detail="invalid or expired mfa token")
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="user not found")
+    return user

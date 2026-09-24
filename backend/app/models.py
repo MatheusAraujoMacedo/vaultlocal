@@ -36,6 +36,21 @@ class User(Base):
     locked_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    auth_method: Mapped[str] = mapped_column(
+        String(20), default="local", server_default="local"
+    )
+    totp_secret_enc: Mapped[bytes | None] = mapped_column(
+        sa.LargeBinary, nullable=True
+    )
+    mfa_configured: Mapped[bool] = mapped_column(
+        sa.Boolean, default=False, server_default=sa.false()
+    )
+    totp_failed_attempts: Mapped[int] = mapped_column(
+        sa.Integer, default=0, server_default="0"
+    )
+    totp_locked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     entries: Mapped[list["VaultEntry"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

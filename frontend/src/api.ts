@@ -58,6 +58,21 @@ export interface EntryBlob extends EntryListItem {
   wrapped_nonce: string
 }
 
+export interface LoginResult {
+  status: 'mfa_setup_required' | 'mfa_verify_required'
+  mfa_token: string
+}
+
+export interface Tokens {
+  access_token: string
+  refresh_token: string
+}
+
+export interface TotpSetup {
+  secret: string
+  otpauth_uri: string
+}
+
 export interface HealthReportPayload {
   score: number
   total_entries: number
@@ -86,9 +101,29 @@ export const api = {
     }, false),
 
   login: (email: string, auth_key: string) =>
-    request<{ access_token: string; refresh_token: string }>('/auth/login', {
+    request<LoginResult>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, auth_key }),
+    }, false),
+
+  totpSetup: (mfa_token: string) =>
+    request<TotpSetup>('/auth/totp/setup', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${mfa_token}` },
+    }, false),
+
+  totpConfirm: (mfa_token: string, totp_code: string) =>
+    request<Tokens>('/auth/totp/confirm', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${mfa_token}` },
+      body: JSON.stringify({ totp_code }),
+    }, false),
+
+  mfaVerify: (mfa_token: string, totp_code: string) =>
+    request<Tokens>('/auth/mfa/verify', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${mfa_token}` },
+      body: JSON.stringify({ totp_code }),
     }, false),
 
   logout: () => {

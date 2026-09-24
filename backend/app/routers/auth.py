@@ -2,25 +2,29 @@ import base64
 import hashlib
 import hmac
 from datetime import datetime, timedelta, timezone
+
+import pyotp
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import settings
-from ..deps import get_db, get_current_user
+from ..deps import get_db, get_current_user, get_mfa_pending_user
 from ..models import User, Session, VaultEntry
 from ..schemas import (
-    RegisterIn, LoginInitIn, LoginInitOut, LoginIn, TokenOut, RefreshIn,
-    ChangePasswordIn,
+    RegisterIn, LoginInitIn, LoginInitOut, LoginIn, LoginOut, TokenOut, RefreshIn,
+    ChangePasswordIn, TotpSetupOut, TotpCodeIn,
 )
 from ..core.security import (
     hash_password,
     verify_password,
     create_access_token,
     create_refresh_token,
+    create_mfa_token,
     verify_token,
     lockout_duration_minutes,
     LOCKOUT_THRESHOLD,
 )
+from ..core.totp import encrypt_totp_secret, decrypt_totp_secret
 from ..core.limiter import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -82,7 +86,7 @@ async def register(body: RegisterIn, db: AsyncSession = Depends(get_db)):
     return {"id": user.id, "email": user.email}
 
 
-@router.post("/login", response_model=TokenOut)
+@router.post("/login", response_model=LoginOut)
 @limiter.limit("5/minute")
 async def login(request: Request, body: LoginIn, db: AsyncSession = Depends(get_db)):
     user = await db.scalar(select(User).where(User.email == body.email))
@@ -104,17 +108,102 @@ async def login(request: Request, body: LoginIn, db: AsyncSession = Depends(get_
 
     user.failed_login_attempts = 0
     user.locked_until = None
+    await db.commit()
 
-    access = create_access_token(user.id)
-    refresh = create_refresh_token(user.id)
+    mfa_token = create_mfa_token(user.id)
+    status_value = "mfa_setup_required" if not user.mfa_configured else "mfa_verify_required"
+    return LoginOut(status=status_value, mfa_token=mfa_token)
+
+
+async def _issue_session_tokens(db: AsyncSession, user_id: str) -> TokenOut:
+    access = create_access_token(user_id)
+    refresh = create_refresh_token(user_id)
     session = Session(
-        user_id=user.id,
+        user_id=user_id,
         refresh_hash=hash_password(refresh),
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
     )
     db.add(session)
     await db.commit()
     return TokenOut(access_token=access, refresh_token=refresh)
+
+
+@router.post("/totp/setup", response_model=TotpSetupOut)
+async def totp_setup(
+    user: User = Depends(get_mfa_pending_user), db: AsyncSession = Depends(get_db)
+):
+    if user.mfa_configured:
+        raise HTTPException(409, "TOTP already configured")
+    secret = pyotp.random_base32()
+    user.totp_secret_enc = encrypt_totp_secret(secret)
+    await db.commit()
+    uri = pyotp.totp.TOTP(secret).provisioning_uri(name=user.email, issuer_name="VaultLocal")
+    return TotpSetupOut(secret=secret, otpauth_uri=uri)
+
+
+@router.post("/totp/confirm", response_model=TokenOut)
+@limiter.limit("5/minute")
+async def totp_confirm(
+    request: Request,
+    body: TotpCodeIn,
+    user: User = Depends(get_mfa_pending_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if user.mfa_configured:
+        raise HTTPException(409, "TOTP already configured")
+    if not user.totp_secret_enc:
+        raise HTTPException(400, "call /auth/totp/setup first")
+
+    now = datetime.now(timezone.utc)
+    locked_until = _aware(user.totp_locked_until)
+    if locked_until and locked_until > now:
+        retry_after = max(1, int((locked_until - now).total_seconds()))
+        raise HTTPException(429, f"totp locked, try again in {retry_after}s")
+
+    secret = decrypt_totp_secret(user.totp_secret_enc)
+    if not pyotp.TOTP(secret).verify(body.totp_code, valid_window=1):
+        user.totp_failed_attempts += 1
+        if user.totp_failed_attempts >= LOCKOUT_THRESHOLD:
+            minutes = lockout_duration_minutes(user.totp_failed_attempts)
+            user.totp_locked_until = now + timedelta(minutes=minutes)
+        await db.commit()
+        raise HTTPException(401, "invalid totp code")
+    user.totp_failed_attempts = 0
+    user.totp_locked_until = None
+    user.mfa_configured = True
+    await db.commit()
+    return await _issue_session_tokens(db, user.id)
+
+
+@router.post("/mfa/verify", response_model=TokenOut)
+@limiter.limit("5/minute")
+async def mfa_verify(
+    request: Request,
+    body: TotpCodeIn,
+    user: User = Depends(get_mfa_pending_user),
+    db: AsyncSession = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    locked_until = _aware(user.totp_locked_until)
+    if locked_until and locked_until > now:
+        retry_after = max(1, int((locked_until - now).total_seconds()))
+        raise HTTPException(429, f"totp locked, try again in {retry_after}s")
+
+    if not user.mfa_configured or not user.totp_secret_enc:
+        raise HTTPException(400, "totp not configured")
+
+    secret = decrypt_totp_secret(user.totp_secret_enc)
+    if not pyotp.TOTP(secret).verify(body.totp_code, valid_window=1):
+        user.totp_failed_attempts += 1
+        if user.totp_failed_attempts >= LOCKOUT_THRESHOLD:
+            minutes = lockout_duration_minutes(user.totp_failed_attempts)
+            user.totp_locked_until = now + timedelta(minutes=minutes)
+        await db.commit()
+        raise HTTPException(401, "invalid totp code")
+
+    user.totp_failed_attempts = 0
+    user.totp_locked_until = None
+    return await _issue_session_tokens(db, user.id)
 
 
 @router.post("/refresh", response_model=TokenOut)
