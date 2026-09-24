@@ -50,6 +50,17 @@ async def _create_entry_directly(user_id: str, **overrides) -> str:
         return entry.id
 
 
+async def test_new_user_has_mfa_defaults(client):
+    await _register(client, "mfa-defaults@test.com")
+    async with SessionLocal() as db:
+        user = await db.scalar(select(User).where(User.email == "mfa-defaults@test.com"))
+        assert user.auth_method == "local"
+        assert user.totp_secret_enc is None
+        assert user.mfa_configured is False
+        assert user.totp_failed_attempts == 0
+        assert user.totp_locked_until is None
+
+
 async def test_login_init_returns_real_salts_for_known_user(client):
     salts = await _register(client, "alice@test.com")
     resp = await client.post("/api/v1/auth/login/init", json={"email": "alice@test.com"})
