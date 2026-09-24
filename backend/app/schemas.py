@@ -1,4 +1,5 @@
 import base64
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
@@ -50,6 +51,20 @@ class TokenOut(BaseModel):
 
 class RefreshIn(BaseModel):
     refresh_token: str
+
+
+class LoginOut(BaseModel):
+    status: Literal["mfa_setup_required", "mfa_verify_required"]
+    mfa_token: str
+
+
+class TotpSetupOut(BaseModel):
+    secret: str
+    otpauth_uri: str
+
+
+class TotpCodeIn(BaseModel):
+    totp_code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
 
 
 class ChangePasswordEntryRewrap(BaseModel):
