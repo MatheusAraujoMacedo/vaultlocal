@@ -44,10 +44,14 @@ Acesso somente via rede local (bind em 127.0.0.1 por padrão).
 └─────────────────────────────────────────────────┘
 ```
 
-**Decisão de criptografia (importante):** criptografia no BACKEND por simplicidade
-na v1, com a chave derivada da senha-mestre mantida apenas em memória durante a
-sessão (nunca persistida). Evolução natural: mover a derivação para o frontend
-(zero-knowledge real) — documentado na seção 10.
+**Decisão de criptografia (vigente):** derivação de chave e criptografia de dados
+ocorrem no FRONTEND. A senha-mestra nunca é enviada ao backend; a KEK e as
+`data_key`s permanecem no cliente e o servidor recebe apenas material criptografado
+e metadados explicitamente necessários para busca.
+
+O frontend deriva duas chaves independentes via Argon2id: uma `auth_key` usada
+apenas para autenticação e uma KEK usada para proteger as `data_key`s. A KEK é
+mantida em memória como `CryptoKey` não-extraível durante a sessão.
 
 ## 4. Stack
 
@@ -64,35 +68,47 @@ sessão (nunca persistida). Evolução natural: mover a derivação para o front
 
 ## 5. Criptografia
 
-### 5.1 Derivação de chave
+### 5.1 Derivação de chaves no cliente
 ```
-master_password (usuário digita no login)
+master_password (digitada no navegador)
        │
-       ▼
-KEK = Argon2id(master_password, salt_unico_por_usuario,
-               time_cost=3, memory=64MB, parallelism=2)
+       ├── Argon2id(master_password, salt_auth)
+       │          └── auth_key → enviado ao backend para verificação/hash
+       │
+       └── Argon2id(master_password, salt_crypto)
+                  └── KEK (CryptoKey não-extraível, apenas no cliente)
 ```
-- `salt` gerado por usuário no registro (16 bytes, aleatório), armazenado em claro.
-- A KEK nunca é salva. Fica em memória no servidor apenas durante a sessão
-  (associada ao token de sessão, com TTL). Alternativa mais segura: reenviar a
-  KEK (ou um wrapped key) a cada request — ver trade-offs na seção 10.
 
-### 5.2 Senhas armazenadas
-```
-Para cada entrada de senha:
-  data_key = chave aleatória de 32 bytes (por entrada)
-  ciphertext = AES-256-GCM(data_key, senha_plaintext, aad=user_id+entry_id)
-  wrapped_data_key = AES-256-GCM(KEK, data_key)
-  Banco guarda: ciphertext, nonce, wrapped_data_key, wrapped_nonce
-```
-Envelope encryption por entrada: rotacionar a senha-mestra exige re-encriptar
-só as data_keys, não todos os segredos.
+- `salt_auth` e `salt_crypto` são aleatórios e independentes, gerados no cliente.
+- A senha-mestra, a KEK e qualquer segredo em claro do cofre nunca são enviados
+  ao backend.
+- A `auth_key` é um derivado da senha, não a senha em si; o backend armazena
+  somente seu hash Argon2id para autenticação.
 
-### 5.3 Hash de autenticação
-A senha-mestra também serve para login. Para não confundir os dois usos:
-- Login: `Argon2id(master_password + salt_auth)` → hash verificado no servidor.
-- Cripto: `Argon2id(master_password + salt_crypto)` → KEK.
-Salts diferentes = chaves diferentes, um não revela o outro.
+### 5.2 Envelope encryption por entrada
+```
+Para cada entrada:
+  data_key = chave AES-256-GCM aleatória por entrada
+  field_ciphertext = AES-256-GCM(data_key, plaintext, nonce aleatório)
+  wrapped_data_key = AES-256-GCM(KEK, data_key, nonce aleatório)
+
+Banco guarda:
+  ciphertext + nonces + wrapped_data_key + wrapped_nonce
+```
+
+A criptografia e a descriptografia acontecem no navegador. O backend apenas
+persiste e recupera blobs criptografados. A rotação da senha-mestra troca a
+proteção das `data_key`s sem recriptografar todos os campos do cofre.
+
+### 5.3 Integridade e limites de confiança
+
+AES-256-GCM fornece confidencialidade e integridade autenticada dos blobs. A
+segurança zero-knowledge depende também da integridade do cliente que executa a
+criptografia: um servidor que consiga substituir o JavaScript entregue ao
+navegador pode, em princípio, capturar uma senha-mestra no momento do uso. Por
+isso, deploy, CSP, supply-chain e integridade dos artefatos fazem parte do
+modelo de ameaça e ficam fora da promessa de que "criptografia sozinha" impede
+um cliente comprometido de exfiltrar segredos.
 
 ## 6. Modelo de Dados (PostgreSQL)
 
@@ -147,13 +163,13 @@ Base: `/api/v1`
 | POST   | /auth/refresh       | Renova access token                    |
 | POST   | /auth/logout        | Revoga refresh token                   |
 
-### Cofre (requer access token + KEK na sessão)
+### Cofre (requer access token; descriptografia ocorre no cliente)
 | Método | Rota                | Descrição                              |
 |--------|---------------------|----------------------------------------|
 | GET    | /entries            | Lista entradas (sem descriptografar)   |
-| POST   | /entries            | Cria entrada (criptografa no server)   |
-| GET    | /entries/{id}       | Retorna entrada DESCRIPTOGRAFADA       |
-| PUT    | /entries/{id}       | Atualiza (re-criptografa)              |
+| POST   | /entries            | Persiste entrada já criptografada no cliente |
+| GET    | /entries/{id}       | Retorna os blobs criptografados       |
+| PUT    | /entries/{id}       | Persiste atualização já criptografada |
 | DELETE | /entries/{id}       | Remove                                 |
 | GET    | /entries/search?q=  | Busca por título/site                  |
 | POST   | /entries/generate   | Gera senha forte (params: len, símbolos)|

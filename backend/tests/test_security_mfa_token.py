@@ -1,6 +1,6 @@
 import os
 
-os.environ.setdefault("JWT_SECRET", "test-secret-not-for-prod")
+os.environ.setdefault("JWT_SECRET", "test-secret-not-for-prod-0123456789ab")
 
 import pytest
 

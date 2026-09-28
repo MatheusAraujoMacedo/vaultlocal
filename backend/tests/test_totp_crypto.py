@@ -1,6 +1,6 @@
 import os
 
-os.environ.setdefault("JWT_SECRET", "test-secret-not-for-prod")
+os.environ.setdefault("JWT_SECRET", "test-secret-not-for-prod-0123456789ab")
 
 from app.core.totp import encrypt_totp_secret, decrypt_totp_secret
 

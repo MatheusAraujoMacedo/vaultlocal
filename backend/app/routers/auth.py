@@ -51,7 +51,8 @@ def _b64decode(value: str, field_name: str) -> bytes:
 
 
 @router.post("/login/init", response_model=LoginInitOut)
-async def login_init(body: LoginInitIn, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login_init(request: Request, body: LoginInitIn, db: AsyncSession = Depends(get_db)):
     user = await db.scalar(select(User).where(User.email == body.email))
     if not user:
         return LoginInitOut(

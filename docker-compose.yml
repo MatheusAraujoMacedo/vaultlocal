@@ -5,7 +5,7 @@ services:
       - pgdata:/var/lib/postgresql/data
     environment:
       POSTGRES_USER: vault
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
       POSTGRES_DB: vaultdb
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U vault"]
@@ -16,8 +16,9 @@ services:
   api:
     build: ./backend
     environment:
-      DATABASE_URL: postgresql://vault:${DB_PASSWORD}@db:5432/vaultdb
-      JWT_SECRET: ${JWT_SECRET}
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql://vault:${DB_PASSWORD:?DB_PASSWORD must be set in .env}@db:5432/vaultdb
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
     depends_on:
       db:
         condition: service_healthy

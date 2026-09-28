@@ -1,6 +1,6 @@
 import secrets
 from argon2 import PasswordHasher
-from jose import jwt
+import jwt
 from datetime import datetime, timedelta, timezone
 from ..config import settings
 
@@ -66,11 +66,10 @@ def create_mfa_token(subject: str) -> str:
 
 def verify_token(token: str, expected_type: str = "access") -> str:
     """Returns user id (sub) if valid, else raises."""
-    from jose import JWTError
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
         if payload.get("type") != expected_type:
             raise ValueError("wrong token type")
         return payload["sub"]
-    except JWTError as e:
+    except jwt.InvalidTokenError as e:
         raise ValueError("invalid token") from e

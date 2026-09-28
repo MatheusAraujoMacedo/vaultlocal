@@ -39,13 +39,13 @@ async function request<T>(
   opts: RequestInit = {},
   auth = true,
 ): Promise<T> {
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...(opts.headers || {}),
+  const headers = new Headers(opts.headers)
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
   }
   if (auth) {
     const token = getToken()
-    if (token) headers['Authorization'] = `Bearer ${token}`
+    if (token) headers.set('Authorization', `Bearer ${token}`)
   }
   const res = await fetch(`${API_BASE}${path}`, { ...opts, headers })
   if (!res.ok) {

@@ -595,7 +595,7 @@ async def test_expired_mfa_token_rejected(client, monkeypatch):
 
     def _expired_mfa_token(subject: str) -> str:
         from datetime import datetime, timedelta, timezone
-        from jose import jwt as jose_jwt
+        import jwt as jose_jwt
         payload = {
             "sub": subject,
             "iat": datetime.now(timezone.utc) - timedelta(minutes=10),

@@ -37,7 +37,8 @@ Zero-knowledge: o banco persiste apenas `username_enc`/`password_enc`/
 
 ```bash
 cp .env.example .env
-# edite .env: defina DB_PASSWORD e JWT_SECRET fortes (openssl rand -hex 32)
+# edite .env: defina DB_PASSWORD forte e JWT_SECRET com pelo menos 32 caracteres.
+# Recomendado: JWT_SECRET=$(openssl rand -hex 32)
 docker compose up -d --build
 ```
 
@@ -102,7 +103,7 @@ make test           # backend (pytest)
 make test-frontend  # frontend (vitest)
 ```
 
-Estado atual: **62/62 backend**, **18/18 frontend**.
+Estado atual: **66/66 backend**, **18/18 frontend**.
 
 ## Backup
 
