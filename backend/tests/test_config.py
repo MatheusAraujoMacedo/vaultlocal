@@ -17,3 +17,13 @@ def test_jwt_secret_rejects_placeholders():
 def test_jwt_secret_accepts_strong_value():
     settings = Settings(JWT_SECRET="x" * 64)
     assert settings.JWT_SECRET == "x" * 64
+
+
+def test_totp_key_requires_32_bytes_hex():
+    with pytest.raises(ValidationError):
+        Settings(TOTP_ENCRYPTION_KEY="a" * 62)
+
+
+def test_totp_key_accepts_32_bytes_hex():
+    settings = Settings(TOTP_ENCRYPTION_KEY="b" * 64)
+    assert settings.TOTP_ENCRYPTION_KEY == "b" * 64

@@ -1,4 +1,5 @@
 import base64
+import uuid
 
 ENC_USERNAME = base64.b64encode(b"enc-username").decode()
 ENC_USERNAME_2 = base64.b64encode(b"enc-username-2").decode()
@@ -13,6 +14,7 @@ WRAPPED_NONCE = base64.b64encode(b"w" * 12).decode()
 
 def _entry_payload(**overrides):
     payload = dict(
+        id=str(uuid.uuid4()), crypto_version=2,
         title="GitHub", site="github.com",
         username_enc=ENC_USERNAME, nonce_username=NONCE_USERNAME,
         password_enc=ENC_PASSWORD, nonce_password=NONCE_PASSWORD,
@@ -37,6 +39,7 @@ async def test_create_and_get_entry_roundtrips_blobs(client, register_and_login)
     assert entry["username_enc"] == ENC_USERNAME
     assert entry["password_enc"] == ENC_PASSWORD
     assert entry["wrapped_data_key"] == WRAPPED_DATA_KEY
+    assert entry["crypto_version"] == 2
 
     resp = await client.get(f"/api/v1/entries/{entry['id']}", headers=headers)
     assert resp.status_code == 200
@@ -76,6 +79,31 @@ async def test_search_entries_matches_title(client, register_and_login):
     assert results[0]["title"] == "Netflix Account"
 
 
+
+
+async def test_create_entry_rejects_duplicate_client_id(client, register_and_login):
+    headers = await _auth_headers(register_and_login, "duplicate-id@test.com")
+    payload = _entry_payload()
+    first = await client.post("/api/v1/entries", headers=headers, json=payload)
+    assert first.status_code == 201
+
+    duplicate = await client.post("/api/v1/entries", headers=headers, json=payload)
+    assert duplicate.status_code == 409
+
+
+async def test_update_entry_rejects_path_body_id_mismatch(client, register_and_login):
+    headers = await _auth_headers(register_and_login, "mismatch-id@test.com")
+    created = await client.post("/api/v1/entries", headers=headers, json=_entry_payload())
+    entry_id = created.json()["id"]
+    other_id = str(uuid.uuid4())
+
+    resp = await client.put(
+        f"/api/v1/entries/{entry_id}",
+        headers=headers,
+        json=_entry_payload(id=other_id),
+    )
+    assert resp.status_code == 400
+
 async def test_update_entry_changes_blobs(client, register_and_login):
     headers = await _auth_headers(register_and_login, "dave@test.com")
     resp = await client.post("/api/v1/entries", headers=headers, json=_entry_payload(title="Old"))
@@ -83,7 +111,7 @@ async def test_update_entry_changes_blobs(client, register_and_login):
 
     resp = await client.put(
         f"/api/v1/entries/{entry_id}", headers=headers,
-        json=_entry_payload(title="New", username_enc=ENC_USERNAME_2, tags="updated"),
+        json=_entry_payload(id=entry_id, title="New", username_enc=ENC_USERNAME_2, tags="updated"),
     )
     assert resp.status_code == 200
     updated = resp.json()

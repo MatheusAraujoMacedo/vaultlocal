@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
-import { unwrapDataKey, decryptField, getSessionKek } from '../crypto'
+import { unwrapDataKey, decryptField, getSessionKek, buildDataKeyAad, buildFieldAad } from '../crypto'
 
 interface DecryptedEntry {
   id: string
@@ -26,14 +26,28 @@ export default function EntryDetail() {
       try {
         const e = await api.getEntry(id)
         const kek = getSessionKek()
+        const dataKeyAad = e.crypto_version === 2 ? buildDataKeyAad(e.id) : undefined
         const key = await unwrapDataKey(
           { wrapped_data_key: e.wrapped_data_key, wrapped_nonce: e.wrapped_nonce },
           kek,
+          dataKeyAad,
         )
-        const username = await decryptField({ ciphertext: e.username_enc, nonce: e.nonce_username }, key)
-        const password = await decryptField({ ciphertext: e.password_enc, nonce: e.nonce_password }, key)
+        const username = await decryptField(
+          { ciphertext: e.username_enc, nonce: e.nonce_username },
+          key,
+          e.crypto_version === 2 ? buildFieldAad(e.id, e.title, e.site, 'username') : undefined,
+        )
+        const password = await decryptField(
+          { ciphertext: e.password_enc, nonce: e.nonce_password },
+          key,
+          e.crypto_version === 2 ? buildFieldAad(e.id, e.title, e.site, 'password') : undefined,
+        )
         const notes = e.notes_enc
-          ? await decryptField({ ciphertext: e.notes_enc, nonce: e.nonce_notes! }, key)
+          ? await decryptField(
+              { ciphertext: e.notes_enc, nonce: e.nonce_notes! },
+              key,
+              e.crypto_version === 2 ? buildFieldAad(e.id, e.title, e.site, 'notes') : undefined,
+            )
           : null
         setEntry({ id: e.id, title: e.title, site: e.site, username, password, notes, tags: e.tags })
       } catch (err: any) {

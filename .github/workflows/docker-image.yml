@@ -59,8 +59,10 @@ jobs:
         env:
           DB_PASSWORD: "ci-db-password-012345678901234567890123"
           JWT_SECRET: "ci-jwt-secret-0123456789012345678901234567890123456789012345678901"
+          TOTP_ENCRYPTION_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       - name: Build images
         run: docker compose build
         env:
           DB_PASSWORD: "ci-db-password-012345678901234567890123"
           JWT_SECRET: "ci-jwt-secret-0123456789012345678901234567890123456789012345678901"
+          TOTP_ENCRYPTION_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

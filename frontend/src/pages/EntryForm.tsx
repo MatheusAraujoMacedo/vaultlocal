@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import {
   generateDataKey, wrapDataKey, unwrapDataKey, encryptField, decryptField, getSessionKek,
+  buildDataKeyAad, buildFieldAad,
 } from '../crypto'
 
 export default function EntryForm() {
@@ -30,18 +31,32 @@ export default function EntryForm() {
       try {
         const e = await api.getEntry(id)
         const kek = getSessionKek()
+        const dataKeyAad = e.crypto_version === 2 ? buildDataKeyAad(e.id) : undefined
         const key = await unwrapDataKey(
           { wrapped_data_key: e.wrapped_data_key, wrapped_nonce: e.wrapped_nonce },
           kek,
+          dataKeyAad,
         )
         setDataKey(key)
         setTitle(e.title)
         setSite(e.site || '')
-        setUsername(await decryptField({ ciphertext: e.username_enc, nonce: e.nonce_username }, key))
-        setPassword(await decryptField({ ciphertext: e.password_enc, nonce: e.nonce_password }, key))
+        setUsername(await decryptField(
+          { ciphertext: e.username_enc, nonce: e.nonce_username },
+          key,
+          e.crypto_version === 2 ? buildFieldAad(e.id, e.title, e.site, 'username') : undefined,
+        ))
+        setPassword(await decryptField(
+          { ciphertext: e.password_enc, nonce: e.nonce_password },
+          key,
+          e.crypto_version === 2 ? buildFieldAad(e.id, e.title, e.site, 'password') : undefined,
+        ))
         setNotes(
           e.notes_enc
-            ? await decryptField({ ciphertext: e.notes_enc, nonce: e.nonce_notes! }, key)
+            ? await decryptField(
+                { ciphertext: e.notes_enc, nonce: e.nonce_notes! },
+                key,
+                e.crypto_version === 2 ? buildFieldAad(e.id, e.title, e.site, 'notes') : undefined,
+              )
             : '',
         )
         setTags(e.tags)
@@ -57,15 +72,21 @@ export default function EntryForm() {
     setLoading(true)
     try {
       const kek = getSessionKek()
+      const entryId = id ?? crypto.randomUUID()
+      const storedSite = site || null
       const key = dataKey || (await generateDataKey())
-      const wrapped = await wrapDataKey(key, kek)
-      const u = await encryptField(username, key)
-      const p = await encryptField(password, key)
-      const n = notes ? await encryptField(notes, key) : null
+      const wrapped = await wrapDataKey(key, kek, buildDataKeyAad(entryId))
+      const u = await encryptField(username, key, buildFieldAad(entryId, title, storedSite, 'username'))
+      const p = await encryptField(password, key, buildFieldAad(entryId, title, storedSite, 'password'))
+      const n = notes
+        ? await encryptField(notes, key, buildFieldAad(entryId, title, storedSite, 'notes'))
+        : null
 
       const data = {
+        id: entryId,
+        crypto_version: 2 as const,
         title,
-        site: site || null,
+        site: storedSite,
         username_enc: u.ciphertext,
         nonce_username: u.nonce,
         password_enc: p.ciphertext,

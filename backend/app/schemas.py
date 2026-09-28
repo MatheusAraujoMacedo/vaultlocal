@@ -1,13 +1,14 @@
 import base64
+import binascii
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, Field, UUID4, field_validator, model_validator
 
 
 def _b64_len(value: str, expected_len: int, field_name: str) -> str:
     try:
         raw = base64.b64decode(value, validate=True)
-    except Exception:
+    except (binascii.Error, ValueError):
         raise ValueError(f"{field_name} must be valid base64")
     if len(raw) != expected_len:
         raise ValueError(f"{field_name} must decode to exactly {expected_len} bytes")
@@ -17,7 +18,7 @@ def _b64_len(value: str, expected_len: int, field_name: str) -> str:
 def _b64_any_len(value: str, field_name: str) -> str:
     try:
         base64.b64decode(value, validate=True)
-    except Exception:
+    except (binascii.Error, ValueError):
         raise ValueError(f"{field_name} must be valid base64")
     return value
 
@@ -27,6 +28,16 @@ class RegisterIn(BaseModel):
     salt_auth: str
     salt_crypto: str
     auth_key: str = Field(min_length=1)
+
+    @field_validator("salt_auth", "salt_crypto")
+    @classmethod
+    def _validate_registration_salts(cls, v: str, info) -> str:
+        return _b64_len(v, 16, info.field_name)
+
+    @field_validator("auth_key")
+    @classmethod
+    def _validate_auth_key(cls, v: str) -> str:
+        return _b64_len(v, 32, "auth_key")
 
 
 class LoginInitIn(BaseModel):
@@ -90,8 +101,20 @@ class ChangePasswordIn(BaseModel):
     new_salt_crypto: str
     entries: list[ChangePasswordEntryRewrap]
 
+    @field_validator("old_auth_key", "new_auth_key")
+    @classmethod
+    def _validate_auth_keys(cls, v: str, info) -> str:
+        return _b64_len(v, 32, info.field_name)
+
+    @field_validator("new_salt_auth", "new_salt_crypto")
+    @classmethod
+    def _validate_password_change_salts(cls, v: str, info) -> str:
+        return _b64_len(v, 16, info.field_name)
+
 
 class EntryIn(BaseModel):
+    id: UUID4
+    crypto_version: Literal[2] = 2
     title: str = Field(min_length=1, max_length=255)
     site: str | None = None
     username_enc: str
@@ -147,6 +170,7 @@ class EntryIn(BaseModel):
 
 class EntryOut(BaseModel):
     id: str
+    crypto_version: Literal[1, 2]
     title: str
     site: str | None
     username_enc: str

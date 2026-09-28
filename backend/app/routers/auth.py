@@ -1,6 +1,8 @@
 import base64
+import binascii
 import hashlib
 import hmac
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import pyotp
@@ -18,6 +20,7 @@ from ..core.security import (
     hash_password,
     verify_password,
     create_access_token,
+    DUMMY_AUTH_HASH,
     create_refresh_token,
     create_mfa_token,
     verify_token,
@@ -46,7 +49,7 @@ def _fake_salt(email: str, domain: str) -> str:
 def _b64decode(value: str, field_name: str) -> bytes:
     try:
         return base64.b64decode(value, validate=True)
-    except Exception:
+    except (binascii.Error, ValueError):
         raise HTTPException(400, f"invalid base64 in {field_name}")
 
 
@@ -99,7 +102,9 @@ async def login(request: Request, body: LoginIn, db: AsyncSession = Depends(get_
         retry_after = int((locked_until - now).total_seconds())
         raise HTTPException(429, f"account locked, try again in {retry_after}s")
 
-    if not user or not verify_password(body.auth_key, user.auth_hash):
+    auth_hash = user.auth_hash if user else DUMMY_AUTH_HASH
+    credentials_valid = verify_password(body.auth_key, auth_hash)
+    if not user or not credentials_valid:
         if user:
             user.failed_login_attempts += 1
             if user.failed_login_attempts >= LOCKOUT_THRESHOLD:
@@ -125,14 +130,16 @@ async def _issue_session_tokens(db: AsyncSession, user_id: str) -> TokenOut:
     for s in expired_sessions:
         await db.delete(s)
 
-    access = create_access_token(user_id)
     refresh = create_refresh_token(user_id)
+    session_id = str(uuid.uuid4())
     session = Session(
+        id=session_id,
         user_id=user_id,
         refresh_hash=hash_password(refresh),
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
     )
     db.add(session)
+    access = create_access_token(user_id, session_id)
     await db.commit()
     return TokenOut(access_token=access, refresh_token=refresh)
 
@@ -235,8 +242,8 @@ async def refresh(body: RefreshIn, db: AsyncSession = Depends(get_db)):
         await db.commit()
         raise HTTPException(401, "refresh token expired")
 
-    access = create_access_token(user_id)
     new_refresh = create_refresh_token(user_id)
+    access = create_access_token(user_id, matched.id)
     matched.refresh_hash = hash_password(new_refresh)
     matched.expires_at = datetime.now(timezone.utc) + timedelta(days=7)
     await db.commit()
@@ -274,14 +281,16 @@ async def change_password(
     for s in old_sessions:
         await db.delete(s)
 
-    access = create_access_token(user.id)
     refresh = create_refresh_token(user.id)
+    session_id = str(uuid.uuid4())
     session = Session(
+        id=session_id,
         user_id=user.id,
         refresh_hash=hash_password(refresh),
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
     )
     db.add(session)
+    access = create_access_token(user.id, session_id)
     await db.commit()
     return TokenOut(access_token=access, refresh_token=refresh)
 

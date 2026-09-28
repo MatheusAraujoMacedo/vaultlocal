@@ -19,6 +19,7 @@ services:
       ENVIRONMENT: production
       DATABASE_URL: postgresql://vault:${DB_PASSWORD:?DB_PASSWORD must be set in .env}@db:5432/vaultdb
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:?TOTP_ENCRYPTION_KEY must be set in .env}
     depends_on:
       db:
         condition: service_healthy

@@ -66,6 +66,7 @@ export interface EntryListItem {
 }
 
 export interface EntryBlob extends EntryListItem {
+  crypto_version: 1 | 2
   username_enc: string
   nonce_username: string
   password_enc: string
@@ -160,10 +161,10 @@ export const api = {
 
   getEntry: (id: string) => request<EntryBlob>(`/entries/${id}`),
 
-  createEntry: (data: Omit<EntryBlob, 'id' | 'created_at' | 'updated_at'>) =>
+  createEntry: (data: Omit<EntryBlob, 'created_at' | 'updated_at'>) =>
     request<EntryBlob>('/entries', { method: 'POST', body: JSON.stringify(data) }),
 
-  updateEntry: (id: string, data: Omit<EntryBlob, 'id' | 'created_at' | 'updated_at'>) =>
+  updateEntry: (id: string, data: Omit<EntryBlob, 'created_at' | 'updated_at'>) =>
     request<EntryBlob>(`/entries/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
   deleteEntry: (id: string) =>

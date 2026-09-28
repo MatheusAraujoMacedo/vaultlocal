@@ -129,6 +129,9 @@ export function generateRecoveryKey(): Uint8Array                       // 32 by
 export function recoveryKeyToDisplay(bytes: Uint8Array): string         // base64 em blocos de 4 chars
 export function recoveryKeyFromDisplay(display: string): Uint8Array     // remove espaços, b64decode
 export interface RecoveryWrap { recovery_wrapped_kek: string; recovery_nonce: string }
+
+// Para entradas v2, unwrap/wrap da data_key usa buildDataKeyAad(entry.id).
+// Entradas v1 usam as funções existentes sem AAD.
 export async function wrapKekWithRecoveryKey(rawKek: Uint8Array, recoveryKey: Uint8Array): Promise<RecoveryWrap>
 export async function unwrapKekWithRecoveryKey(wrapped: RecoveryWrap, recoveryKey: Uint8Array): Promise<Uint8Array>
 ```
@@ -172,6 +175,7 @@ class RecoveryVerifyIn(BaseModel):
 
 class RecoveryEntry(BaseModel):
     id: str
+    crypto_version: Literal[1, 2]
     wrapped_data_key: str
     wrapped_nonce: str
 
@@ -217,8 +221,11 @@ class PasswordResetConfirmIn(BaseModel):
    ≥12 chars, não comum) + código TOTP atual.
 5. `POST /auth/recovery/verify {email, totp_code}` → `recovery_token` +
    `entries` atuais.
-6. Cliente: para cada entrada, `unwrapDataKey(entry, kekAntiga)` →
-   `wrapDataKey(dataKey, kekNova)` (funções já existentes em `crypto.ts`).
+6. Cliente: para cada entrada, usa `crypto_version` para escolher o formato:
+   - v1: `unwrapDataKey(entry, kekAntiga)` → `wrapDataKey(dataKey, kekNova)`;
+   - v2: `unwrapDataKey(entry, kekAntiga, buildDataKeyAad(entry.id))` →
+     `wrapDataKey(dataKey, kekNova, buildDataKeyAad(entry.id))`.
+   O recovery não precisa descriptografar os campos do cofre.
    Gera novos salts, nova `auth_key`, nova recovery key, novo
    `recovery_wrapped_kek` (wrap da KEK nova).
 7. `POST /auth/recovery/recover` (header `Authorization: Bearer

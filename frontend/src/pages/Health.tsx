@@ -4,7 +4,7 @@ import { api } from '../api'
 import { analyze } from '../health/engine'
 import { computeScore } from '../health/score'
 import type { EntryForAnalysis } from '../health/rules'
-import { unwrapDataKey, decryptField, getSessionKek } from '../crypto'
+import { unwrapDataKey, decryptField, getSessionKek, buildDataKeyAad, buildFieldAad } from '../crypto'
 
 const LS_KEY = 'vaultlocal:health:last'
 
@@ -53,13 +53,16 @@ export default function Health() {
 
         const forAnalysis: EntryForAnalysis[] = await Promise.all(
           blobs.map(async (b) => {
+            const dataKeyAad = b.crypto_version === 2 ? buildDataKeyAad(b.id) : undefined
             const key = await unwrapDataKey(
               { wrapped_data_key: b.wrapped_data_key, wrapped_nonce: b.wrapped_nonce },
               kek,
+              dataKeyAad,
             )
             const password = await decryptField(
               { ciphertext: b.password_enc, nonce: b.nonce_password },
               key,
+              b.crypto_version === 2 ? buildFieldAad(b.id, b.title, b.site, 'password') : undefined,
             )
             return { id: b.id, password, updatedAt: b.updated_at }
           }),

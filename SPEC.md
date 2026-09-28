@@ -59,7 +59,7 @@ mantida em memória como `CryptoKey` não-extraível durante a sessão.
 |-------------|----------------------------------|------------------------------------------|
 | Banco       | PostgreSQL 16 (Alpine)           | Robusto, volume Docker persiste local    |
 | Backend     | Python 3.12 + FastAPI            | Rápido de escrever, ótimo p/ API REST    |
-| Auth        | JWT (access 15min + refresh 7d)  | Stateless, padrão                        |
+| Auth        | JWT + sessões (access 15min + refresh 7d) | Access token vinculado a sessão revogável |
 | KDF         | Argon2id (via `argon2-cffi`)     | Resistente a GPU/ASIC, padrão atual      |
 | Cripto      | AES-256-GCM (via `cryptography`) | AEAD, autenticado                        |
 | Frontend    | React + Vite + Tailwind          | SPA leve servida por Nginx               |
@@ -86,19 +86,37 @@ master_password (digitada no navegador)
   somente seu hash Argon2id para autenticação.
 
 ### 5.2 Envelope encryption por entrada
-```
-Para cada entrada:
-  data_key = chave AES-256-GCM aleatória por entrada
-  field_ciphertext = AES-256-GCM(data_key, plaintext, nonce aleatório)
-  wrapped_data_key = AES-256-GCM(KEK, data_key, nonce aleatório)
 
-Banco guarda:
-  ciphertext + nonces + wrapped_data_key + wrapped_nonce
+O formato criptográfico é versionado para permitir endurecimento sem perder
+compatibilidade com cofres criados antes da adoção de AAD.
+
+| Versão | Estado | Proteção |
+|---|---|---|
+| `1` | legado | AES-256-GCM sem AAD |
+| `2` | vigente | AES-256-GCM com AAD vinculando registro/metadados |
+
+Para uma entrada v2:
 ```
+data_key = AES-256-GCM key aleatória por entrada
+wrapped_data_key = AES-256-GCM(KEK, data_key, AAD=data-key(entry_id))
+username_enc = AES-256-GCM(data_key, username, AAD=field(entry_id,title,site,"username"))
+password_enc = AES-256-GCM(data_key, password, AAD=field(entry_id,title,site,"password"))
+notes_enc    = AES-256-GCM(data_key, notes,    AAD=field(entry_id,title,site,"notes"))
+```
+
+A criação gera o `entry_id` no cliente antes de cifrar, pois ele participa do
+AAD. Alterar título/site ou mover ciphertext/wrapped key entre IDs faz a
+descriptografia falhar por violação da tag GCM. A AAD da `data_key` usa somente
+o `entry_id` para que fluxos futuros de recovery/password rotation consigam
+re-encapsular a chave sem precisar descriptografar os campos ou conhecer
+metadados.
+
+Entradas v1 permanecem legíveis sem AAD. Ao editar uma entrada v1, o frontend
+a descriptografa usando o formato legado e salva novamente como v2.
 
 A criptografia e a descriptografia acontecem no navegador. O backend apenas
 persiste e recupera blobs criptografados. A rotação da senha-mestra troca a
-proteção das `data_key`s sem recriptografar todos os campos do cofre.
+proteção das `data_key`s sem recriptografar os campos do cofre.
 
 ### 5.3 Integridade e limites de confiança
 
@@ -135,6 +153,7 @@ vault_entries (
   nonce_pass    BYTEA NOT NULL,
   nonce_notes   BYTEA,
   tags          TEXT[] DEFAULT '{}',
+  crypto_version SMALLINT NOT NULL DEFAULT 1, -- 1=legacy, 2=AAD
   created_at    TIMESTAMPTZ DEFAULT now(),
   updated_at    TIMESTAMPTZ DEFAULT now()
 )
@@ -241,28 +260,23 @@ JWT_SECRET=<64 hex chars>
 5. Senha-mestra mínima: 12 caracteres, checagem contra lista de senhas vazadas comuns.
 6. HTTPS: dispensável em 127.0.0.1; se abrir para LAN, obrigatório via cert self-signed ou Caddy.
 7. Logs: nunca logar senha-mestra, KEK, ou plaintext de entradas.
-8. .env no .gitignore desde o commit 1.
-9. Backup: script `make backup` → `pg_dump` compactado e criptografado com a senha-mestra.
-10. Clipboard: frontend limpa área de transferência 30s após copiar senha.
+8. JWT signing key e chave de criptografia TOTP são independentes e obrigatórias.
+9. Access tokens usam `sid` e só são aceitos enquanto a sessão correspondente existir e não estiver expirada.
+10. .env no .gitignore desde o commit 1.
+11. Backup: script `make backup` → `pg_dump` compactado e criptografado com a senha-mestra.
+12. Clipboard: frontend limpa a área de transferência 30s após copiar senha.
 
-## 10. Alternativa: Banco no Render (fase 2, opcional)
+## 10. Banco em nuvem (fase futura, opcional)
 
-Se quiser o Postgres gratuito do Render em vez do container local:
+O PostgreSQL local pode futuramente ser substituído por um banco gerenciado.
+Isso não altera o modelo criptográfico atual: o frontend já cifra os segredos e o backend persiste apenas blobs criptografados.
 
 **O que muda:**
-- Remove o serviço `db` do compose; `DATABASE_URL` aponta para a URL externa do Render.
-- TLS obrigatório na conexão (`?sslmode=require`).
+- `DATABASE_URL` passa a apontar para um serviço externo.
+- TLS é obrigatório para conexão e transporte.
+- Disponibilidade, metadados, supply-chain, logs e confiança no provedor entram no modelo de ameaça.
 
-**Trade-offs (documentados, não bloqueantes):**
-- (+) Acesso ao cofre de qualquer máquina que rode o Docker.
-- (+) Não precisa cuidar de backup local (Render tem snapshots).
-- (−) Ciphertext viaja/fica na nuvem — quebra o princípio "só local".
-- (−) Free tier do Render expira o Postgres após 90 dias (precisa upgrade ou migração).
-- (−) Latência e dependência de internet.
-
-**Mitigação se for por esse caminho:** mover a criptografia para o frontend
-(zero-knowledge real): a KEK nunca sai do navegador, o servidor só vê blobs
-opacos. Nesse modelo o servidor em nuvem comprometido não expõe nada legível.
+O princípio local-first deixa de ser absoluto, mas a confidencialidade dos segredos continua dependente de a KEK permanecer exclusivamente no cliente e de a integridade do cliente distribuído ser preservada.
 
 ## 11. Estrutura de Repositório
 

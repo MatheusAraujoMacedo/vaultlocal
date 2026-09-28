@@ -57,6 +57,23 @@ export async function deriveAuthKey(password: string, saltAuthB64: string): Prom
   return b64encode(raw)
 }
 
+function aadBytes(aad?: string): Uint8Array | undefined {
+  return aad === undefined ? undefined : new TextEncoder().encode(aad)
+}
+
+export function buildDataKeyAad(entryId: string): string {
+  return JSON.stringify(['VaultLocal', 'v2', 'data-key', entryId])
+}
+
+export function buildFieldAad(
+  entryId: string,
+  title: string,
+  site: string | null | undefined,
+  field: 'username' | 'password' | 'notes',
+): string {
+  return JSON.stringify(['VaultLocal', 'v2', 'field', entryId, title, site ?? '', field])
+}
+
 async function importAesKey(raw: Uint8Array | ArrayBufferLike, extractable = false): Promise<CryptoKey> {
   const arr = ensureArrayBuffer(raw instanceof Uint8Array ? raw : new Uint8Array(raw))
   return crypto.subtle.importKey('raw', arr as BufferSource, 'AES-GCM', extractable, ['encrypt', 'decrypt'])
@@ -92,21 +109,29 @@ export async function generateDataKey(): Promise<CryptoKey> {
   return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt'])
 }
 
-export async function wrapDataKey(dataKey: CryptoKey, kek: CryptoKey): Promise<WrappedKey> {
+export async function wrapDataKey(dataKey: CryptoKey, kek: CryptoKey, aad?: string): Promise<WrappedKey> {
   const raw = ensureArrayBuffer(await crypto.subtle.exportKey('raw', dataKey))
   const nonce = new Uint8Array(12)
   crypto.getRandomValues(nonce)
   const ciphertext = ensureArrayBuffer(
-    await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce as BufferSource }, kek, raw as BufferSource),
+    await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: nonce as BufferSource, additionalData: aadBytes(aad) as BufferSource | undefined },
+      kek,
+      raw as BufferSource,
+    ),
   )
   return { wrapped_data_key: b64encode(ciphertext), wrapped_nonce: b64encode(nonce) }
 }
 
-export async function unwrapDataKey(wrapped: WrappedKey, kek: CryptoKey): Promise<CryptoKey> {
+export async function unwrapDataKey(wrapped: WrappedKey, kek: CryptoKey, aad?: string): Promise<CryptoKey> {
   const ciphertext = b64decode(wrapped.wrapped_data_key)
   const nonce = b64decode(wrapped.wrapped_nonce)
   const raw = ensureArrayBuffer(
-    await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce as BufferSource }, kek, ciphertext as BufferSource),
+    await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: nonce as BufferSource, additionalData: aadBytes(aad) as BufferSource | undefined },
+      kek,
+      ciphertext as BufferSource,
+    ),
   )
   // data_keys precisam ser extractable porque depois sao wrapped novamente ao salvar
   return importAesKey(raw, true)
@@ -117,20 +142,28 @@ export interface EncField {
   nonce: string
 }
 
-export async function encryptField(plaintext: string, dataKey: CryptoKey): Promise<EncField> {
+export async function encryptField(plaintext: string, dataKey: CryptoKey, aad?: string): Promise<EncField> {
   const nonce = new Uint8Array(12)
   crypto.getRandomValues(nonce)
   const encoded = new TextEncoder().encode(plaintext)
   const ciphertext = ensureArrayBuffer(
-    await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce as BufferSource }, dataKey, encoded as BufferSource),
+    await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: nonce as BufferSource, additionalData: aadBytes(aad) as BufferSource | undefined },
+      dataKey,
+      encoded as BufferSource,
+    ),
   )
   return { ciphertext: b64encode(ciphertext), nonce: b64encode(nonce) }
 }
 
-export async function decryptField(field: EncField, dataKey: CryptoKey): Promise<string> {
+export async function decryptField(field: EncField, dataKey: CryptoKey, aad?: string): Promise<string> {
   const ciphertext = b64decode(field.ciphertext)
   const nonce = b64decode(field.nonce)
-  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce as BufferSource }, dataKey, ciphertext as BufferSource)
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: nonce as BufferSource, additionalData: aadBytes(aad) as BufferSource | undefined },
+    dataKey,
+    ciphertext as BufferSource,
+  )
   return new TextDecoder().decode(plaintext)
 }
 

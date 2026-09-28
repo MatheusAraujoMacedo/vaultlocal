@@ -11,8 +11,9 @@ from app.core.totp import decrypt_totp_secret
 from app.db import SessionLocal
 from app.models import User, VaultEntry
 
-AUTH_KEY = "sim-auth-key-AAAAAAAAAAAAAAAAAAAA"
-NEW_AUTH_KEY = "sim-auth-key-BBBBBBBBBBBBBBBBBBBB"
+AUTH_KEY = base64.b64encode(b"A" * 32).decode()
+NEW_AUTH_KEY = base64.b64encode(b"B" * 32).decode()
+WRONG_AUTH_KEY = base64.b64encode(b"C" * 32).decode()
 
 
 def test_settings_reject_weak_jwt_secret_in_production(monkeypatch):
@@ -58,6 +59,7 @@ async def _create_entry_directly(user_id: str, **overrides) -> str:
         password_enc="p", nonce_password="n2",
         notes_enc=None, nonce_notes=None,
         wrapped_data_key="old-wrapped", wrapped_nonce="old-nonce",
+        crypto_version=1,
         tags="",
     )
     defaults.update(overrides)
@@ -96,6 +98,18 @@ async def test_login_init_returns_fake_but_stable_salts_for_unknown_user(client)
     assert resp1.json() == resp2.json()
 
 
+
+
+async def test_login_init_is_rate_limited(client):
+    statuses = []
+    for i in range(11):
+        response = await client.post(
+            "/api/v1/auth/login/init",
+            json={"email": f"rate-limit-{i}@test.com"},
+        )
+        statuses.append(response.status_code)
+    assert statuses.count(429) == 1
+
 async def test_register_success(client):
     await _register(client, "bob@test.com")
 
@@ -119,7 +133,7 @@ async def test_register_rejects_malformed_base64_salt(client):
             "auth_key": AUTH_KEY,
         },
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
 
 async def test_login_success_returns_tokens(client):
@@ -293,7 +307,7 @@ async def test_change_password_rejects_wrong_old_auth_key(client):
         "/api/v1/auth/change-password",
         headers=headers,
         json={
-            "old_auth_key": "wrong-key", "new_auth_key": NEW_AUTH_KEY,
+            "old_auth_key": WRONG_AUTH_KEY, "new_auth_key": NEW_AUTH_KEY,
             "new_salt_auth": _salt(), "new_salt_crypto": _salt(), "entries": [],
         },
     )
@@ -315,7 +329,7 @@ async def test_change_password_rejects_malformed_base64_salt(client):
             "entries": [],
         },
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
 
 async def test_change_password_rejects_incomplete_entries_payload(client):
@@ -614,3 +628,40 @@ async def test_expired_mfa_token_rejected(client, monkeypatch):
         "/api/v1/auth/totp/setup", headers={"Authorization": f"Bearer {expired_token}"}
     )
     assert resp.status_code == 401
+
+
+async def test_register_rejects_wrong_derived_key_length(client):
+    resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "bad-key@test.com",
+            "salt_auth": base64.b64encode(b"a" * 16).decode(),
+            "salt_crypto": base64.b64encode(b"b" * 16).decode(),
+            "auth_key": base64.b64encode(b"c" * 31).decode(),
+        },
+    )
+    assert resp.status_code == 422
+
+
+async def test_register_rejects_wrong_salt_length(client):
+    resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "bad-salt@test.com",
+            "salt_auth": base64.b64encode(b"a" * 15).decode(),
+            "salt_crypto": base64.b64encode(b"b" * 16).decode(),
+            "auth_key": base64.b64encode(b"c" * 32).decode(),
+        },
+    )
+    assert resp.status_code == 422
+
+
+async def test_logout_revokes_existing_access_token(client):
+    await _register(client, "logout-access@test.com")
+    tokens = await _login(client, "logout-access@test.com")
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+    assert (await client.get("/api/v1/entries", headers=headers)).status_code == 200
+
+    logout = await client.post("/api/v1/auth/logout", json={"refresh_token": tokens["refresh_token"]})
+    assert logout.status_code == 200
+    assert (await client.get("/api/v1/entries", headers=headers)).status_code == 401

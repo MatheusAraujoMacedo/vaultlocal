@@ -35,7 +35,7 @@ async def client():
 
 @pytest.fixture
 def register_and_login(client):
-    async def _do(email: str, auth_key: str = "sim-auth-key-AAAAAAAAAAAAAAAAAAAA") -> dict:
+    async def _do(email: str, auth_key: str = base64.b64encode(b"A" * 32).decode()) -> dict:
         salt_auth = base64.b64encode(secrets.token_bytes(16)).decode()
         salt_crypto = base64.b64encode(secrets.token_bytes(16)).decode()
         resp = await client.post(

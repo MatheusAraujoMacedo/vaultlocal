@@ -14,6 +14,7 @@ router = APIRouter(prefix="/entries", tags=["entries"])
 def _to_out(e: VaultEntry) -> EntryOut:
     return EntryOut(
         id=e.id,
+        crypto_version=e.crypto_version,
         title=e.title,
         site=e.site,
         username_enc=e.username_enc,
@@ -75,8 +76,13 @@ async def create_entry(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    entry_id = str(body.id)
+    if await db.get(VaultEntry, entry_id):
+        raise HTTPException(409, "entry id already exists")
     entry = VaultEntry(
+        id=entry_id,
         user_id=user.id,
+        crypto_version=2,
         title=body.title,
         site=body.site,
         username_enc=body.username_enc,
@@ -117,6 +123,9 @@ async def update_entry(
     e = await db.get(VaultEntry, entry_id)
     if not e or e.user_id != user.id:
         raise HTTPException(404, "not found")
+    if str(body.id) != entry_id:
+        raise HTTPException(400, "entry id does not match path")
+    e.crypto_version = 2
     e.title = body.title
     e.site = body.site
     e.username_enc = body.username_enc

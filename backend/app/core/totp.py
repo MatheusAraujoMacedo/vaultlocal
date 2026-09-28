@@ -1,15 +1,12 @@
 import base64
 
 from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from ..config import settings
 
 
 def _totp_fernet_key() -> bytes:
-    kdf = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=b"totp")
-    raw = kdf.derive(settings.JWT_SECRET.encode())
+    raw = bytes.fromhex(settings.TOTP_ENCRYPTION_KEY)
     return base64.urlsafe_b64encode(raw)
 
 

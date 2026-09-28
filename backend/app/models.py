@@ -85,6 +85,9 @@ class VaultEntry(Base):
 
     wrapped_data_key: Mapped[str] = mapped_column(Text)
     wrapped_nonce: Mapped[str] = mapped_column(String(64))
+    crypto_version: Mapped[int] = mapped_column(
+        sa.SmallInteger, nullable=False, default=2, server_default="1"
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

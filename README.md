@@ -25,7 +25,7 @@ browser (React)
 ```
 
 Zero-knowledge: o banco persiste apenas `username_enc`/`password_enc`/
-`notes_enc`/`wrapped_data_key`/`wrapped_nonce` + `title`/`site` em claro
+`notes_enc`/`wrapped_data_key`/`wrapped_nonce` + `title`/`site`/`tags` em claro
 (trade-off de busca, documentado em `SPEC.md §6`).
 
 ## Requisitos
@@ -37,8 +37,9 @@ Zero-knowledge: o banco persiste apenas `username_enc`/`password_enc`/
 
 ```bash
 cp .env.example .env
-# edite .env: defina DB_PASSWORD forte e JWT_SECRET com pelo menos 32 caracteres.
-# Recomendado: JWT_SECRET=$(openssl rand -hex 32)
+# edite .env: defina DB_PASSWORD forte, JWT_SECRET com 64 hex chars e
+# TOTP_ENCRYPTION_KEY com 64 hex chars.
+# Recomendado: openssl rand -hex 32 para cada uma das duas chaves.
 docker compose up -d --build
 ```
 
@@ -50,7 +51,8 @@ guarde-a offline.
 
 - **Envelope encryption por entrada** — AES-256-GCM com `data_key` único por
   entrada, wrap em KEK derivada por Argon2id (`time_cost=3`, `memory=64MB`,
-  `parallelism=2`). Rotação de senha-mestra = rewrap de 32 bytes por entrada.
+  `parallelism=2`). O formato v2 usa AAD para vincular cada blob ao `entry_id`
+  e aos metadados da entrada. Rotação de senha-mestra = rewrap por entrada.
 - **Zero-knowledge E2E** — derivação KEK e cifragem no navegador
   (`hash-wasm` + WebCrypto). Backend só vê blobs.
 - **MFA obrigatório (TOTP)** — RFC 6238, secret cifrado em repouso (Fernet
@@ -103,7 +105,7 @@ make test           # backend (pytest)
 make test-frontend  # frontend (vitest)
 ```
 
-Estado atual: **66/66 backend**, **18/18 frontend**.
+Estado atual: **78/78 backend**, **21/21 frontend**.
 
 ## Backup
 
@@ -155,9 +157,12 @@ vaultlocal/
    mecanismo de desbloqueio alternativo.
 5. **Lockout progressivo** em `auth/login` e `auth/mfa/verify`
    (contadores independentes).
-6. **Clipboard expiry**: frontend limpa a área de transferência 30s após
+6. **Sessões revogáveis**: access tokens carregam `sid` e são aceitos somente
+   enquanto a sessão correspondente existir e não estiver expirada; logout
+   e troca de senha revogam as sessões antigas.
+7. **Clipboard expiry**: frontend limpa a área de transferência 30s após
    copiar.
-7. **`.env` gitignored** desde o commit 1.
+8. **`.env` gitignored** desde o commit 1.
 
 Para a discussão completa de ameaças, mitigações e trade-offs: `SPEC.md §9`,
 `docs/deployment/csp.md`, `docs/superpowers/specs/2026-09-23-forgot-password-rfc.md`.

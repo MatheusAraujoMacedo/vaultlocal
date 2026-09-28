@@ -1,12 +1,19 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from .db import SessionLocal
-from .models import User
-from .core.security import verify_token
+from .models import Session, User
+from .core.security import verify_access_token, verify_token
 
 security = HTTPBearer()
+
+
+def _is_session_expired(session: Session) -> bool:
+    from datetime import datetime, timezone
+    expires_at = session.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    return expires_at < datetime.now(timezone.utc)
 
 
 async def get_db():
@@ -20,12 +27,15 @@ async def get_current_user(
 ) -> User:
     token = creds.credentials
     try:
-        user_id = verify_token(token, "access")
+        user_id, session_id = verify_access_token(token)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token")
     user = await db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=401, detail="user not found")
+    session = await db.get(Session, session_id)
+    if not user or not session or session.user_id != user.id:
+        raise HTTPException(status_code=401, detail="invalid session")
+    if _is_session_expired(session):
+        raise HTTPException(status_code=401, detail="session expired")
     return user
 
 
