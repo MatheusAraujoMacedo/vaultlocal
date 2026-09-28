@@ -1,7 +1,6 @@
 import pytest
-from pydantic import ValidationError
-
 from app.config import Settings
+from pydantic import ValidationError
 
 
 def test_jwt_secret_requires_32_characters():

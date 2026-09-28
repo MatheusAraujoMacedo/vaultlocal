@@ -40,10 +40,12 @@ cp .env.example .env
 # edite .env: defina DB_PASSWORD forte, JWT_SECRET com 64 hex chars e
 # TOTP_ENCRYPTION_KEY com 64 hex chars.
 # Recomendado: openssl rand -hex 32 para cada uma das duas chaves.
+# Google OIDC é opcional: preencha GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET
+# e mantenha GOOGLE_REDIRECT_URI exatamente como registrado no Google.
 docker compose up -d --build
 ```
 
-Acesse **http://127.0.0.1:8080**. No primeiro acesso você cria a conta,
+Acesse **http://localhost:8080**. No primeiro acesso você cria a conta,
 configura o **autenticador TOTP** (QR code) e recebe a **recovery key** —
 guarde-a offline.
 
@@ -56,9 +58,18 @@ guarde-a offline.
 - **Zero-knowledge E2E** — derivação KEK e cifragem no navegador
   (`hash-wasm` + WebCrypto). Backend só vê blobs.
 - **MFA obrigatório (TOTP)** — RFC 6238, secret cifrado em repouso (Fernet
-  com chave derivada de `JWT_SECRET` via HKDF). Lockout progressivo
+  com uma `TOTP_ENCRYPTION_KEY` independente de `JWT_SECRET`). Lockout progressivo
   independente por fator.
-- **Gerador de senhas** — parâmetros configuráveis (length, símbolos).
+- **Google OIDC opcional** — Authorization Code + PKCE, `state`/`nonce`, validação
+  do ID token e vínculo por `sub`. O Google autentica a identidade; a senha-mestra
+  continua sendo a raiz do cofre para novos dispositivos.
+- **Acesso rápido com WebAuthn/Passkey** — credencial com verificação do usuário,
+  challenge de uso único e contador anti-replay. O PRF deriva no navegador uma chave
+  de dispositivo usada para cifrar o envelope da KEK; o servidor nunca recebe o PRF
+  nem a KEK em claro. Login rápido = Google ou e-mail + passkey confiável.
+- **Gestão de dispositivos confiáveis** — múltiplas passkeys por conta, renomeação
+  e revogação individual. A revogação exige step-up com TOTP.
+- **Gerador de senhas local** — geração feita no navegador via Web Crypto, sem o servidor ver a senha gerada.
 - **Busca** — sobre `title`/`site` (claro) server-side.
 - **Health Dashboard** (`/health`) — score 0–100 do cofre; detecta senhas
   fracas (comprimento/comum/só-letras/só-dígitos), reutilizadas e antigas.
@@ -70,14 +81,16 @@ guarde-a offline.
 
 ## Roadmap (RFC ativa)
 
-Fases documentadas em `docs/superpowers/specs/2026-09-23-forgot-password-rfc.md`:
+Fases documentadas em `docs/superpowers/specs/2026-09-23-forgot-password-rfc.md`.
+
+Ponto de retomada da implementação atual: `docs/superpowers/plans/2026-09-28-vaultlocal-phase4-handoff.md`.
 
 | Fase | Entrega | Status |
 |---|---|---|
-| 1 | MFA local (TOTP) | ✅ merge em progresso |
-| 2 | Recovery key + reset destrutivo com token | 🟡 RFC aprovada |
-| 3 | Google OIDC como identidade (opcional) | 🟡 RFC aprovada |
-| 4 | WebAuthn / biometria móvel | 🟡 RFC aprovada |
+| 1 | MFA local (TOTP) | ✅ implementado |
+| 2 | Recovery key + reset destrutivo com token | ✅ implementado |
+| 3 | Google OIDC como identidade (opcional) | ✅ implementado — E2E validado |
+| 4 | WebAuthn / passkey para acesso rápido | ✅ 4.1 E2E browser validado; 4.2 implementado |
 | 5 | Breach check local (HIBP offline) | 📋 spec em `health-dashboard.md §9` |
 
 ## Dev local (sem Docker)
@@ -105,7 +118,7 @@ make test           # backend (pytest)
 make test-frontend  # frontend (vitest)
 ```
 
-Estado atual: **78/78 backend**, **21/21 frontend**.
+Estado atual: **106/106 backend**, **29/29 frontend**.
 
 ## Backup
 
@@ -113,8 +126,9 @@ Estado atual: **78/78 backend**, **21/21 frontend**.
 make backup
 ```
 
-Dump compactado em `backups/`. Como o cofre é zero-knowledge, o backup contém
-apenas ciphertext — sem a senha-mestra + recovery key, não há como restaurar.
+Dump compactado em `backups/`. Os segredos do cofre permanecem como ciphertext,
+mas o arquivo ainda contém metadados e hashes de autenticação. Uma exportação
+portátil cifrada ponta a ponta será responsabilidade do cliente no roadmap.
 
 ## Estrutura do repositório
 
@@ -129,6 +143,7 @@ vaultlocal/
 │   │   ├── schemas.py      # Pydantic (contratos públicos)
 │   │   ├── routers/        # auth, entries, health
 │   │   ├── core/           # security (JWT/Argon2), limiter, totp
+│   │   ├── webauthn_support.py # opções WebAuthn + helpers de RP
 │   │   └── deps.py         # get_db, get_current_user, get_mfa_pending_user
 │   ├── alembic/            # migrações (003 = TOTP, 002 = health_reports)
 │   └── tests/              # pytest

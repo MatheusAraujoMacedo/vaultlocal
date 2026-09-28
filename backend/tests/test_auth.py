@@ -3,13 +3,12 @@ import secrets
 
 import pyotp
 import pytest
-from sqlalchemy import select
-
 from app.config import Settings
-from app.core.security import lockout_duration_minutes, LOCKOUT_THRESHOLD
+from app.core.security import LOCKOUT_THRESHOLD, lockout_duration_minutes
 from app.core.totp import decrypt_totp_secret
 from app.db import SessionLocal
 from app.models import User, VaultEntry
+from sqlalchemy import select
 
 AUTH_KEY = base64.b64encode(b"A" * 32).decode()
 NEW_AUTH_KEY = base64.b64encode(b"B" * 32).decode()
@@ -190,7 +189,7 @@ async def test_login_configured_user_returns_mfa_verify_required(client):
         "/api/v1/auth/login", json={"email": "verifyflow@test.com", "auth_key": AUTH_KEY}
     )
     assert resp.status_code == 200
-    assert resp.json()["status"] == "mfa_verify_required"
+    assert resp.json()["status"] == "recovery_setup_required"
 
 
 async def test_mfa_verify_with_correct_code_issues_tokens(client):
@@ -215,7 +214,7 @@ async def test_mfa_verify_with_correct_code_issues_tokens(client):
 
 async def test_login_wrong_auth_key_rejected(client):
     await _register(client, "dave@test.com")
-    resp = await client.post("/api/v1/auth/login", json={"email": "dave@test.com", "auth_key": "wrong-key"})
+    resp = await client.post("/api/v1/auth/login", json={"email": "dave@test.com", "auth_key": WRONG_AUTH_KEY})
     assert resp.status_code == 401
 
 
@@ -227,7 +226,7 @@ async def test_login_unknown_email_rejected(client):
 async def test_login_lockout_engages_after_threshold(client):
     await _register(client, "erin@test.com")
     for _ in range(LOCKOUT_THRESHOLD):
-        resp = await client.post("/api/v1/auth/login", json={"email": "erin@test.com", "auth_key": "wrong-key"})
+        resp = await client.post("/api/v1/auth/login", json={"email": "erin@test.com", "auth_key": WRONG_AUTH_KEY})
         assert resp.status_code == 401
 
     async with SessionLocal() as db:
@@ -243,7 +242,7 @@ async def test_login_resets_failed_attempts_on_success(client):
     await _register(client, "molly@test.com")
     for _ in range(LOCKOUT_THRESHOLD - 1):
         resp = await client.post(
-            "/api/v1/auth/login", json={"email": "molly@test.com", "auth_key": "wrong-key"}
+            "/api/v1/auth/login", json={"email": "molly@test.com", "auth_key": WRONG_AUTH_KEY}
         )
         assert resp.status_code == 401
 
@@ -609,6 +608,7 @@ async def test_expired_mfa_token_rejected(client, monkeypatch):
 
     def _expired_mfa_token(subject: str) -> str:
         from datetime import datetime, timedelta, timezone
+
         import jwt as jose_jwt
         payload = {
             "sub": subject,
@@ -665,3 +665,13 @@ async def test_logout_revokes_existing_access_token(client):
     logout = await client.post("/api/v1/auth/logout", json={"refresh_token": tokens["refresh_token"]})
     assert logout.status_code == 200
     assert (await client.get("/api/v1/entries", headers=headers)).status_code == 401
+
+
+async def test_login_rejects_malformed_derived_key_length(client):
+    await _register(client, "bad-login-key-length@test.com")
+    short_key = base64.b64encode(b"x" * 31).decode()
+    resp = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "bad-login-key-length@test.com", "auth_key": short_key},
+    )
+    assert resp.status_code == 422

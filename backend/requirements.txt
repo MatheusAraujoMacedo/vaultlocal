@@ -13,3 +13,6 @@ aiosqlite==0.20.0
 alembic==1.13.2
 email-validator==2.2.0
 pyotp==2.9.0
+authlib==1.8.0
+httpx==0.27.2
+webauthn==3.0.1

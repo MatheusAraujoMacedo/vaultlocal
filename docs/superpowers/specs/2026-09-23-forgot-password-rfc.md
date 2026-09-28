@@ -1,6 +1,6 @@
 # RFC: Autenticação forte e recuperação de acesso (v2)
 
-- Status: Proposta (v2 — revisada)
+- Status: Implementação em andamento (Fases 1–3; E2E Google pendente)
 - Data: 2026-09-23
 - Autor: Matheus (revisão técnica assistida)
 - Substitui: RFC v1 (2026-09-23)
@@ -159,7 +159,11 @@ Base: `/api/v1`. Novos endpoints:
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| POST | `/auth/oidc/google` | Troca `code`+`state` do Google por sessão (ou `mfa_pending`). |
+| GET | `/auth/oidc/google/start` | Inicia Authorization Code + PKCE e grava `state`/nonce/verifier em cookie HttpOnly. |
+| GET | `/auth/oidc/google/callback` | Valida o retorno do Google e cria um handoff curto em cookie HttpOnly. |
+| GET | `/auth/oidc/google/exchange` | Troca o handoff por estado de onboarding ou pelos salts da conta vinculada. |
+| POST | `/auth/oidc/google/password` | Para conta existente: prova a senha-mestra local e emite apenas `mfa_pending`. |
+| POST | `/auth/oidc/google/complete` | Para conta nova: cria a identidade Google + material inicial do cofre. |
 | POST | `/auth/totp/setup` | Gera secret + URI otpauth:// (auth parcial exigida). |
 | POST | `/auth/totp/confirm` | Confirma código, ativa `mfa_configured`. |
 | POST | `/auth/mfa/verify` | 2ª etapa do login: `{mfa_token, totp_code}` ou assertion WebAuthn → tokens definitivos. |
@@ -286,12 +290,14 @@ um Client ID (gratuito) mas é opcional.
   usado/expirado, 202 sem vazar conta.
 
 ### Fase 3 — Google OIDC
-- Migration: `auth_method`, `google_sub`.
-- Endpoint OIDC (code + PKCE, verificação de id_token: iss/aud/exp/nonce).
-- Conta Google → estado `pending_mfa` até TOTP configurado.
-- UI: botão "Entrar com Google" na tela de login.
-- Testes: primeiro login Google, vínculo com conta existente por email,
-  rejeição de email não verificado.
+- Migration: `google_sub` com índice único; `auth_method` já existe desde a Fase 1.
+- Authorization Code + PKCE com `state`, `nonce` e `code_verifier` protegidos por cookie HttpOnly.
+- Validação de assinatura/JWKS e claims do ID token (`iss`, `aud`, `azp`, `exp`, `nonce`, `email_verified`).
+- Conta Google nova → senha-mestra local + recovery key + TOTP antes do primeiro acesso.
+- Conta existente vinculada → Google comprova identidade, senha-mestra continua separada e TOTP permanece a segunda etapa.
+- UI: botão "Continuar com Google" na tela de login.
+- Testes automatizados: state mismatch, primeiro login, vínculo por email, exchange,
+  prova de senha para identidade vinculada; validação E2E com provedor Google ainda pendente.
 
 ### Fase 4 — WebAuthn / biometria
 - Tabela `webauthn_credentials`, cerimônias registro/assertion.

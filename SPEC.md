@@ -191,7 +191,6 @@ Base: `/api/v1`
 | PUT    | /entries/{id}       | Persiste atualização já criptografada |
 | DELETE | /entries/{id}       | Remove                                 |
 | GET    | /entries/search?q=  | Busca por título/site                  |
-| POST   | /entries/generate   | Gera senha forte (params: len, símbolos)|
 
 ### Utilidades
 | Método | Rota                | Descrição                              |
@@ -247,15 +246,16 @@ volumes:
 
 ### 8.3 .env (gitignored)
 ```
-DB_PASSWORD=<senha do postgres gerada no setup>
+DB_PASSWORD=<64 hex chars>
 JWT_SECRET=<64 hex chars>
+TOTP_ENCRYPTION_KEY=<64 hex chars>
 ```
 
 ## 9. Segurança — Requisitos e Políticas
 
 1. Bind apenas em 127.0.0.1 (mudar exige editar o compose conscientemente).
 2. Postgres e API nunca expostos na porta do host.
-3. Rate limit no /auth/login (ex: 5 tentativas/min por IP) — proteção brute-force.
+3. Rate limit nas superfícies de autenticação (`login/init`, `register`, `login`, `refresh`, `mfa/verify`, `totp/confirm`).
 4. Lockout progressivo após N falhas de login.
 5. Senha-mestra mínima: 12 caracteres, checagem contra lista de senhas vazadas comuns.
 6. HTTPS: dispensável em 127.0.0.1; se abrir para LAN, obrigatório via cert self-signed ou Caddy.
@@ -263,7 +263,7 @@ JWT_SECRET=<64 hex chars>
 8. JWT signing key e chave de criptografia TOTP são independentes e obrigatórias.
 9. Access tokens usam `sid` e só são aceitos enquanto a sessão correspondente existir e não estiver expirada.
 10. .env no .gitignore desde o commit 1.
-11. Backup: script `make backup` → `pg_dump` compactado e criptografado com a senha-mestra.
+11. Backup: script `make backup` → `pg_dump` compactado contendo apenas os blobs criptografados e metadados do banco. Não é criptografia adicional com a senha-mestra; exportação portátil cifrada deve ser implementada no cliente.
 12. Clipboard: frontend limpa a área de transferência 30s após copiar senha.
 
 ## 10. Banco em nuvem (fase futura, opcional)

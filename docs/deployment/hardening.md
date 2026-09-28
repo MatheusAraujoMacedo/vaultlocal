@@ -13,16 +13,35 @@ integridade e reprodutibilidade.
 - `JWT_SECRET` separado de `TOTP_ENCRYPTION_KEY`.
 - Access tokens vinculados a sessões revogáveis (`sid`).
 - Rate limit nas superfícies de autenticação.
+- Gerador de senhas executado somente no cliente com Web Crypto.
+- Backend executado como usuário não-root no container.
+- CORS de desenvolvimento não é habilitado em produção.
+- Frontend não carrega fontes ou estilos externos; reduzimos dependência e vazamento de metadados para terceiros.
 - API sem cache; query strings não entram nos access logs do Nginx.
 - Uvicorn sem access log duplicado.
 - OpenAPI/Swagger/ReDoc desabilitados em produção.
 - Docker exige secrets fortes via Compose.
-- CI executa testes, typecheck, build e auditoria de dependências.
+- CI executa lint, testes, typecheck, build e auditoria de dependências.
+
+## Segurança de migração
+
+A migration `51459a466ecc` é o corte do modelo antigo de criptografia para o modelo
+zero-knowledge atual. Ela é deliberadamente destrutiva para bancos pré-ZK e
+recusa execução quando já existem usuários, a menos que uma flag explícita seja
+fornecida. Durante o hardening essa flag **não** foi usada e nenhum dado do
+volume existente foi apagado.
+
+O procedimento de migração/reset desse volume deve ser tratado como uma
+operação controlada separada do startup normal, com backup e validação prévios.
+O runbook detalhado está em `docs/deployment/zk-cutover.md`.
 
 ## Estado de validação
 
-- Backend: 78 testes.
-- Frontend: 21 testes.
+- Backend: 80 testes.
+- Frontend: 23 testes.
+- Validação isolada dos testes não depende do `.env` local.
+- Limites de entrada aplicados aos principais payloads e buscas autenticadas.
+- API possui healthcheck próprio; o frontend só sobe após a API estar saudável.
 - TypeScript: OK.
 - Build Vite: OK.
 - `pip-audit`: sem vulnerabilidades conhecidas.

@@ -1,15 +1,16 @@
 import base64
 import binascii
-from typing import Literal
+from datetime import datetime
+from typing import Any, Literal
 
-from pydantic import BaseModel, EmailStr, Field, UUID4, field_validator, model_validator
+from pydantic import UUID4, BaseModel, EmailStr, Field, field_validator, model_validator
 
 
 def _b64_len(value: str, expected_len: int, field_name: str) -> str:
     try:
         raw = base64.b64decode(value, validate=True)
     except (binascii.Error, ValueError):
-        raise ValueError(f"{field_name} must be valid base64")
+        raise ValueError(f"{field_name} must be valid base64") from None
     if len(raw) != expected_len:
         raise ValueError(f"{field_name} must decode to exactly {expected_len} bytes")
     return value
@@ -19,12 +20,12 @@ def _b64_any_len(value: str, field_name: str) -> str:
     try:
         base64.b64decode(value, validate=True)
     except (binascii.Error, ValueError):
-        raise ValueError(f"{field_name} must be valid base64")
+        raise ValueError(f"{field_name} must be valid base64") from None
     return value
 
 
 class RegisterIn(BaseModel):
-    email: EmailStr
+    email: EmailStr = Field(max_length=320)
     salt_auth: str
     salt_crypto: str
     auth_key: str = Field(min_length=1)
@@ -41,7 +42,7 @@ class RegisterIn(BaseModel):
 
 
 class LoginInitIn(BaseModel):
-    email: EmailStr
+    email: EmailStr = Field(max_length=320)
 
 
 class LoginInitOut(BaseModel):
@@ -50,8 +51,13 @@ class LoginInitOut(BaseModel):
 
 
 class LoginIn(BaseModel):
-    email: EmailStr
+    email: EmailStr = Field(max_length=320)
     auth_key: str
+
+    @field_validator("auth_key")
+    @classmethod
+    def _validate_login_auth_key(cls, v: str) -> str:
+        return _b64_len(v, 32, "auth_key")
 
 
 class TokenOut(BaseModel):
@@ -61,12 +67,295 @@ class TokenOut(BaseModel):
 
 
 class RefreshIn(BaseModel):
-    refresh_token: str
+    refresh_token: str = Field(min_length=1, max_length=4096)
 
 
 class LoginOut(BaseModel):
-    status: Literal["mfa_setup_required", "mfa_verify_required"]
+    status: Literal["mfa_setup_required", "recovery_setup_required", "mfa_verify_required"]
     mfa_token: str
+    recovery_upgrade_required: bool = False
+
+
+class GoogleHandoffOut(BaseModel):
+    status: Literal["existing", "setup_required"]
+    email: EmailStr = Field(max_length=320)
+    salt_auth: str | None = None
+    salt_crypto: str | None = None
+
+
+class GoogleCompleteIn(BaseModel):
+    new_salt_auth: str
+    new_salt_crypto: str
+    auth_key: str
+
+    @field_validator("new_salt_auth", "new_salt_crypto")
+    @classmethod
+    def _validate_google_salts(cls, v: str, info) -> str:
+        return _b64_len(v, 16, info.field_name)
+
+    @field_validator("auth_key")
+    @classmethod
+    def _validate_google_auth_key(cls, v: str) -> str:
+        return _b64_len(v, 32, "auth_key")
+
+
+class GooglePasswordIn(BaseModel):
+    auth_key: str
+
+    @field_validator("auth_key")
+    @classmethod
+    def _validate_google_password_auth_key(cls, v: str) -> str:
+        return _b64_len(v, 32, "auth_key")
+
+
+class WebAuthnRegisterVerifyIn(BaseModel):
+    challenge: str = Field(min_length=40, max_length=100)
+    prf_salt: str
+    credential: dict[str, Any]
+
+    @field_validator("prf_salt")
+    @classmethod
+    def _validate_prf_salt(cls, v: str) -> str:
+        return _b64_len(v, 32, "prf_salt")
+
+    @field_validator("challenge")
+    @classmethod
+    def _validate_webauthn_challenge(cls, v: str) -> str:
+        return v
+
+
+class WebAuthnEnvelopeIn(BaseModel):
+    credential_id: str = Field(min_length=1, max_length=512)
+    encrypted_kek: str
+    kek_nonce: str
+
+    @field_validator("encrypted_kek")
+    @classmethod
+    def _validate_encrypted_kek(cls, v: str) -> str:
+        return _b64_len(v, 48, "encrypted_kek")
+
+    @field_validator("kek_nonce")
+    @classmethod
+    def _validate_kek_nonce(cls, v: str) -> str:
+        return _b64_len(v, 12, "kek_nonce")
+
+
+class WebAuthnLoginVerifyIn(BaseModel):
+    challenge: str = Field(min_length=40, max_length=100)
+    credential: dict[str, Any]
+
+
+class WebAuthnLocalOptionsIn(BaseModel):
+    email: EmailStr = Field(max_length=320)
+
+
+class WebAuthnRegisterOptionsOut(BaseModel):
+    options: dict[str, Any]
+    challenge: str
+    prf_salt: str
+
+
+class WebAuthnLoginOptionsOut(BaseModel):
+    options: dict[str, Any]
+    challenge: str
+    prf_salts: dict[str, str]
+
+
+class WebAuthnLoginOut(BaseModel):
+    access_token: str
+    refresh_token: str
+    credential_id: str
+    encrypted_kek: str
+    kek_nonce: str
+
+
+class WebAuthnDeviceOut(BaseModel):
+    credential_id: str
+    name: str
+    created_at: datetime
+    last_used_at: datetime | None
+    credential_backed_up: bool
+
+
+class WebAuthnDevicesOut(BaseModel):
+    devices: list[WebAuthnDeviceOut]
+
+
+class WebAuthnDeviceRenameIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class WebAuthnDeviceRevokeIn(BaseModel):
+    totp_code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
+class RecoverySetupIn(BaseModel):
+    recovery_wrapped_kek: str
+    recovery_nonce: str
+    recovery_public_key: str = Field(min_length=80, max_length=2048)
+    recovery_wrapped_signing_key: str
+    recovery_signing_nonce: str
+
+    @field_validator("recovery_signing_nonce")
+    @classmethod
+    def _validate_recovery_signing_nonce(cls, v: str) -> str:
+        return _b64_len(v, 12, "recovery_signing_nonce")
+
+    @field_validator("recovery_wrapped_signing_key")
+    @classmethod
+    def _validate_recovery_signing_key(cls, v: str) -> str:
+        return _b64_any_len(v, "recovery_wrapped_signing_key")
+
+    @field_validator("recovery_wrapped_kek")
+    @classmethod
+    def _validate_recovery_wrap(cls, v: str) -> str:
+        return _b64_len(v, 48, "recovery_wrapped_kek")
+
+    @field_validator("recovery_nonce")
+    @classmethod
+    def _validate_recovery_nonce(cls, v: str) -> str:
+        return _b64_len(v, 12, "recovery_nonce")
+
+
+class RecoveryInitIn(BaseModel):
+    email: EmailStr = Field(max_length=320)
+
+
+class RecoveryInitOut(BaseModel):
+    salt_crypto: str
+    recovery_wrapped_kek: str
+    recovery_nonce: str
+    recovery_challenge: str
+    recovery_public_key: str
+    recovery_wrapped_signing_key: str
+    recovery_signing_nonce: str
+
+
+class RecoveryVerifyIn(BaseModel):
+    email: EmailStr = Field(max_length=320)
+    recovery_challenge: str
+    recovery_proof: str
+
+    @field_validator("recovery_challenge")
+    @classmethod
+    def _validate_recovery_challenge_b64(cls, v: str) -> str:
+        return _b64_len(v, 32, "recovery_challenge")
+
+    @field_validator("recovery_proof")
+    @classmethod
+    def _validate_recovery_proof_b64(cls, v: str) -> str:
+        return _b64_len(v, 64, "recovery_proof")
+
+
+class RecoveryUpgradeIn(BaseModel):
+    recovery_public_key: str = Field(min_length=80, max_length=2048)
+    recovery_wrapped_signing_key: str
+    recovery_signing_nonce: str
+
+    @field_validator("recovery_signing_nonce")
+    @classmethod
+    def _validate_upgrade_signing_nonce(cls, v: str) -> str:
+        return _b64_len(v, 12, "recovery_signing_nonce")
+
+    @field_validator("recovery_wrapped_signing_key")
+    @classmethod
+    def _validate_upgrade_signing_key(cls, v: str) -> str:
+        return _b64_any_len(v, "recovery_wrapped_signing_key")
+
+
+class RecoveryEntry(BaseModel):
+    id: str
+    crypto_version: Literal[1, 2]
+    wrapped_data_key: str
+    wrapped_nonce: str
+
+    @field_validator("wrapped_data_key")
+    @classmethod
+    def _validate_recovery_wrapped_key(cls, v: str) -> str:
+        return _b64_len(v, 48, "wrapped_data_key")
+
+    @field_validator("wrapped_nonce")
+    @classmethod
+    def _validate_recovery_wrapped_nonce(cls, v: str) -> str:
+        return _b64_len(v, 12, "wrapped_nonce")
+
+
+class RecoveryVerifyOut(BaseModel):
+    recovery_token: str
+    entries: list[RecoveryEntry]
+
+
+class RecoverIn(BaseModel):
+    new_auth_key: str
+    new_salt_auth: str
+    new_salt_crypto: str
+    new_recovery_wrapped_kek: str
+    new_recovery_nonce: str
+    new_recovery_public_key: str = Field(min_length=80, max_length=2048)
+    new_recovery_wrapped_signing_key: str
+    new_recovery_signing_nonce: str
+    entries: list["ChangePasswordEntryRewrap"]
+
+    @field_validator("new_auth_key")
+    @classmethod
+    def _validate_recover_auth_key(cls, v: str) -> str:
+        return _b64_len(v, 32, "new_auth_key")
+
+    @field_validator("new_salt_auth", "new_salt_crypto")
+    @classmethod
+    def _validate_recover_salt(cls, v: str, info) -> str:
+        return _b64_len(v, 16, info.field_name)
+
+    @field_validator("new_recovery_wrapped_kek")
+    @classmethod
+    def _validate_recover_wrap(cls, v: str) -> str:
+        return _b64_len(v, 48, "new_recovery_wrapped_kek")
+
+    @field_validator("new_recovery_nonce")
+    @classmethod
+    def _validate_recover_nonce(cls, v: str) -> str:
+        return _b64_len(v, 12, "new_recovery_nonce")
+
+    @field_validator("new_recovery_signing_nonce")
+    @classmethod
+    def _validate_new_recovery_signing_nonce(cls, v: str) -> str:
+        return _b64_len(v, 12, "new_recovery_signing_nonce")
+
+    @field_validator("new_recovery_wrapped_signing_key")
+    @classmethod
+    def _validate_new_recovery_signing_key(cls, v: str) -> str:
+        return _b64_any_len(v, "new_recovery_wrapped_signing_key")
+
+
+class PasswordResetRequestIn(BaseModel):
+    email: EmailStr = Field(max_length=320)
+    totp_code: str | None = Field(default=None, min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
+class PasswordResetRequestOut(BaseModel):
+    ok: bool = True
+    token: str | None = None
+
+
+class PasswordResetValidateIn(BaseModel):
+    token: str = Field(min_length=1, max_length=512)
+
+
+class PasswordResetConfirmIn(BaseModel):
+    token: str = Field(min_length=1, max_length=512)
+    new_auth_key: str
+    new_salt_auth: str
+    new_salt_crypto: str
+
+    @field_validator("new_auth_key")
+    @classmethod
+    def _validate_reset_auth_key(cls, v: str) -> str:
+        return _b64_len(v, 32, "new_auth_key")
+
+    @field_validator("new_salt_auth", "new_salt_crypto")
+    @classmethod
+    def _validate_reset_salt(cls, v: str, info) -> str:
+        return _b64_len(v, 16, info.field_name)
 
 
 class TotpSetupOut(BaseModel):
@@ -79,7 +368,7 @@ class TotpCodeIn(BaseModel):
 
 
 class ChangePasswordEntryRewrap(BaseModel):
-    id: str
+    id: UUID4
     wrapped_data_key: str
     wrapped_nonce: str
 
@@ -116,7 +405,7 @@ class EntryIn(BaseModel):
     id: UUID4
     crypto_version: Literal[2] = 2
     title: str = Field(min_length=1, max_length=255)
-    site: str | None = None
+    site: str | None = Field(default=None, max_length=255)
     username_enc: str
     nonce_username: str
     password_enc: str
@@ -125,7 +414,7 @@ class EntryIn(BaseModel):
     nonce_notes: str | None = None
     wrapped_data_key: str
     wrapped_nonce: str
-    tags: str = ""
+    tags: str = Field(default="", max_length=512)
 
     @field_validator("nonce_username", "nonce_password")
     @classmethod
@@ -193,15 +482,6 @@ class EntryListItem(BaseModel):
     tags: str
     created_at: str
     updated_at: str
-
-
-class GenerateIn(BaseModel):
-    length: int = Field(default=20, ge=8, le=128)
-    use_symbols: bool = True
-
-
-class GenerateOut(BaseModel):
-    password: str
 
 
 class HealthReportIn(BaseModel):

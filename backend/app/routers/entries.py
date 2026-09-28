@@ -1,12 +1,12 @@
 from datetime import datetime, timezone
-import secrets
-import string
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, or_
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from ..deps import get_db, get_current_user
-from ..models import VaultEntry, User
-from ..schemas import EntryIn, EntryOut, EntryListItem, GenerateIn, GenerateOut
+
+from ..deps import get_current_user, get_db
+from ..models import User, VaultEntry
+from ..schemas import EntryIn, EntryListItem, EntryOut
 
 router = APIRouter(prefix="/entries", tags=["entries"])
 
@@ -50,7 +50,7 @@ async def list_entries(
 
 @router.get("/search", response_model=list[EntryListItem])
 async def search_entries(
-    q: str,
+    q: str = Query(min_length=1, max_length=128),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -154,15 +154,3 @@ async def delete_entry(
         raise HTTPException(404, "not found")
     await db.delete(e)
     await db.commit()
-
-
-@router.post("/generate/password", response_model=GenerateOut)
-async def generate_password(
-    body: GenerateIn,
-    user: User = Depends(get_current_user),
-):
-    chars = string.ascii_letters + string.digits
-    if body.use_symbols:
-        chars += "!@#$%^&*()-_=+[]{};:,.<>?"
-    pwd = "".join(secrets.choice(chars) for _ in range(body.length))
-    return GenerateOut(password=pwd)

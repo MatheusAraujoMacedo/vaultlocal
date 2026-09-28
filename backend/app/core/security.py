@@ -1,8 +1,10 @@
 import secrets
+from datetime import datetime, timedelta, timezone
+
+import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
-import jwt
-from datetime import datetime, timedelta, timezone
+
 from ..config import settings
 
 ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
@@ -66,6 +68,84 @@ def create_mfa_token(subject: str) -> str:
         "jti": secrets.token_hex(16),
     }
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
+def create_recovery_token(subject: str) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": subject,
+        "iat": now,
+        "exp": now + timedelta(minutes=5),
+        "type": "recovery_pending",
+        "jti": secrets.token_hex(16),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
+def create_oidc_state_token(state: str, nonce: str, code_verifier: str) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": secrets.token_hex(16),
+        "state": state,
+        "nonce": nonce,
+        "code_verifier": code_verifier,
+        "iat": now,
+        "exp": now + timedelta(minutes=10),
+        "type": "oidc_state",
+        "jti": secrets.token_hex(16),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
+def verify_oidc_state_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("type") != "oidc_state":
+            raise ValueError("wrong token type")
+        for key in ("state", "nonce", "code_verifier"):
+            if not isinstance(payload.get(key), str) or not payload[key]:
+                raise ValueError("missing OIDC state claim")
+        return payload
+    except jwt.InvalidTokenError as e:
+        raise ValueError("invalid OIDC state") from e
+
+
+def create_google_handoff_token(email: str, google_sub: str, user_id: str | None) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": user_id or "new",
+        "email": email,
+        "google_sub": google_sub,
+        "iat": now,
+        "exp": now + timedelta(minutes=5),
+        "type": "google_handoff",
+        "jti": secrets.token_hex(16),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
+def verify_google_handoff_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("type") != "google_handoff":
+            raise ValueError("wrong token type")
+        if (
+            not isinstance(payload.get("email"), str)
+            or not payload["email"]
+            or not isinstance(payload.get("google_sub"), str)
+            or not payload["google_sub"]
+        ):
+            raise ValueError("invalid Google handoff")
+        return payload
+    except jwt.InvalidTokenError as e:
+        raise ValueError("invalid Google handoff") from e
+
+
+def hash_reset_token(token: str) -> str:
+    import hashlib
+    import hmac
+
+    return hmac.new(settings.JWT_SECRET.encode(), token.encode(), hashlib.sha256).hexdigest()
 
 
 def _subject_from_payload(payload: dict, expected_type: str) -> str:

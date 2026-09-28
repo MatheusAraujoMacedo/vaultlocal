@@ -1,9 +1,9 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, ForeignKey, DateTime, LargeBinary, ARRAY, Text
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
 import sqlalchemy as sa
+from sqlalchemy import DateTime, ForeignKey, LargeBinary, String, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -39,6 +39,7 @@ class User(Base):
     auth_method: Mapped[str] = mapped_column(
         String(20), default="local", server_default="local"
     )
+    google_sub: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
     totp_secret_enc: Mapped[bytes | None] = mapped_column(
         sa.LargeBinary, nullable=True
     )
@@ -51,6 +52,14 @@ class User(Base):
     totp_locked_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    recovery_wrapped_kek: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recovery_nonce: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    recovery_verifier: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recovery_public_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recovery_wrapped_signing_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recovery_signing_nonce: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    recovery_challenge_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recovery_challenge_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     entries: Mapped[list["VaultEntry"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
@@ -60,6 +69,14 @@ class User(Base):
     )
 
     sessions: Mapped[list["Session"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+    webauthn_credentials: Mapped[list["WebAuthnCredential"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+    webauthn_challenges: Mapped[list["WebAuthnChallenge"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -113,6 +130,65 @@ class Session(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="sessions")
+
+
+class WebAuthnCredential(Base):
+    __tablename__ = "webauthn_credentials"
+
+    id: Mapped[str] = _uuid_pk()
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    credential_id: Mapped[str] = mapped_column(Text, unique=True, index=True)
+    public_key: Mapped[bytes] = mapped_column(LargeBinary)
+    sign_count: Mapped[int] = mapped_column(sa.BigInteger, default=0, server_default="0")
+    prf_salt: Mapped[bytes] = mapped_column(LargeBinary)
+    encrypted_kek: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kek_nonce: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    name: Mapped[str] = mapped_column(String(100), default="Dispositivo", server_default="Dispositivo")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    credential_backed_up: Mapped[bool] = mapped_column(sa.Boolean, default=False, server_default=sa.false())
+
+    user: Mapped[User] = relationship(back_populates="webauthn_credentials")
+
+
+class WebAuthnChallenge(Base):
+    __tablename__ = "webauthn_challenges"
+
+    id: Mapped[str] = _uuid_pk()
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    challenge_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    purpose: Mapped[str] = mapped_column(String(30))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    user: Mapped[User] = relationship(back_populates="webauthn_challenges")
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[str] = _uuid_pk()
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(Text, unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    request_ip_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    user: Mapped[User] = relationship()
 
 
 class HealthReport(Base):

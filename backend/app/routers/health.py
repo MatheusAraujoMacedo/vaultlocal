@@ -1,8 +1,10 @@
 from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from ..deps import get_db, get_current_user
+
+from ..deps import get_current_user, get_db
 from ..models import HealthReport, User
 from ..schemas import HealthReportIn, HealthReportOut
 

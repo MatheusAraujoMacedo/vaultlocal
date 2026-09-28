@@ -8,3 +8,8 @@ dist/
 .pytest_cache/
 .worktrees/
 .playwright-mcp/
+backups/
+.remember/
+.ruff_cache/
+.coverage
+htmlcov/

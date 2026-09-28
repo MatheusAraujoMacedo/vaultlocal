@@ -15,6 +15,9 @@ backup:
 restore:
 	@echo "Use: gunzip -c backups/arquivo.sql.gz | docker compose exec -T db psql -U vault vaultdb"
 
+cutover-zk:
+	@BACKUP="$(BACKUP)" CONFIRM="$(CONFIRM)" ./scripts/cutover-zk.sh
+
 dev-backend:
 	cd backend && ../.venv/bin/uvicorn app.main:app --reload --port 8000
 

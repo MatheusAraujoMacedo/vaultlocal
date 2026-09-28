@@ -6,15 +6,15 @@ import tempfile
 _tmp_dir = tempfile.mkdtemp(prefix="vaultlocal_test_")
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_tmp_dir}/test.db"
 os.environ["JWT_SECRET"] = "test-secret-not-for-prod-0123456789ab"
+os.environ["TOTP_ENCRYPTION_KEY"] = "a" * 64
 
 import pyotp
 import pytest
-from httpx import ASGITransport, AsyncClient
-
 from app.core.limiter import limiter
 from app.db import engine
 from app.main import app
 from app.models import Base
+from httpx import ASGITransport, AsyncClient
 
 
 @pytest.fixture(autouse=True)

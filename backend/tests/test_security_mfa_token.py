@@ -3,10 +3,10 @@ import os
 os.environ.setdefault("JWT_SECRET", "test-secret-not-for-prod-0123456789ab")
 os.environ.setdefault("TOTP_ENCRYPTION_KEY", "a" * 64)
 
-import pytest
-import jwt as jose_jwt
 from datetime import datetime, timedelta, timezone
 
+import jwt as jose_jwt
+import pytest
 from app.core.security import (
     create_access_token,
     create_mfa_token,

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import {
   generateDataKey, wrapDataKey, unwrapDataKey, encryptField, decryptField, getSessionKek,
-  buildDataKeyAad, buildFieldAad,
+  buildDataKeyAad, buildFieldAad, generateSecurePassword,
 } from '../crypto'
 
 export default function EntryForm() {
@@ -113,8 +113,7 @@ export default function EntryForm() {
   async function generate() {
     setGenerating(true)
     try {
-      const res = await api.generatePassword(24, true)
-      setPassword(res.password)
+      setPassword(generateSecurePassword(24, true))
     } catch (e: any) {
       setError(e.message)
     } finally {

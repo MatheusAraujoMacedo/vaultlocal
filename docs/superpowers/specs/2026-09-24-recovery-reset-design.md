@@ -1,6 +1,6 @@
 # Spec: Recovery key + reset destrutivo — Fase 2 da RFC de autenticação forte
 
-- Status: Aprovado (design)
+- Status: Implementado (Fase 2 — recovery independente de TOTP; validação E2E manual da migração da conta legada pendente)
 - Data: 2026-09-24
 - Origem: `docs/superpowers/specs/2026-09-23-forgot-password-rfc.md`, Fase 2 do plano de implementação (seção 10, seções 4.1.3/4.4/4.5/4.6/5/6)
 
@@ -22,42 +22,39 @@ em blocos de 4 caracteres (não BIP39/24-palavras): a RFC permite explicitamente
 peso incerto (RFC §9, "avaliar tamanho"). Confirmação por re-digitação exata
 antes de prosseguir (RFC §4.1.3).
 
-**D2 — Fluxo de recuperação em 3 chamadas, não 1.** A RFC esboça
-`/auth/recovery/recover` com um payload único (email + totp_code + novo
-material + `entries`), mas o cliente só pode montar `entries` (rewrap de
-cada `data_key`) se antes souber o `wrapped_data_key`/`wrapped_nonce` atual
-de cada entrada — e essa lista é sensível, não pode ser exposta sem
-verificar o segundo fator primeiro. Por isso:
+**D2 — Fluxo de recuperação em 3 chamadas + prova criptográfica de posse.** A RFC
+esboça `/auth/recovery/recover` com um payload único, mas o cliente só pode
+montar `entries` se antes receber os `wrapped_data_key`/`wrapped_nonce`
+atuais. A Recovery Key é um método de recuperação independente do TOTP:
 
-1. `POST /auth/recovery/init` — público, sem segundo fator, devolve
-   `salt_crypto` + `recovery_wrapped_kek` + `recovery_nonce` (ou blobs falsos
-   determinísticos se a conta não existir/não tiver recovery key — mesmo
-   padrão anti-enumeração de `/auth/login/init`). O cliente decide localmente
-   se a recovery key está certa (a descriptografia AES-GCM falha se estiver
-   errada); o servidor nunca sabe o resultado dessa checagem (RFC §4.4.3).
-2. `POST /auth/recovery/verify` — público, rate-limited, exige `email` +
-   `totp_code` correto (prova de posse do 2º fator, já que a senha é
-   desconhecida). Sucesso: devolve `recovery_token` (JWT `type="recovery_pending"`,
-   5 min, mesma família de `mfa_pending`) + a lista atual de
-   `entries: [{id, wrapped_data_key, wrapped_nonce}]`.
+1. `POST /auth/recovery/init` — público, sem TOTP, devolve `salt_crypto` +
+   `recovery_wrapped_kek` + `recovery_nonce` + challenge aleatório de 32
+   bytes. O cliente tenta abrir a KEK localmente com a Recovery Key.
+2. `POST /auth/recovery/verify` — público, rate-limited, envia
+   `email + recovery_challenge + recovery_proof`. A Recovery Key nunca é
+   enviada: ela desbloqueia localmente uma chave privada ECDSA P-256 armazenada
+   cifrada; essa chave assina o challenge. O servidor verifica a assinatura
+   contra a chave pública armazenada. Challenge expira em 5 minutos e é de uso
+   único. Sucesso: devolve `recovery_token`
+   (JWT `type="recovery_pending"`, 5 min) + `entries` atuais.
 3. `POST /auth/recovery/recover` — autenticado via `recovery_token`. Body =
-   novo `auth_key`/salts/`recovery_wrapped_kek`/`recovery_nonce` + `entries`
-   re-wrapped. Mesma checagem de conjunto exato de `entries` que
-   `change-password` já faz hoje.
+   novo `auth_key`/salts/`recovery_wrapped_kek`/`recovery_nonce` + novo
+   material ECDSA + `entries` re-wrapped.
 
-TOTP e `mfa_configured` **não são resetados** neste fluxo (RFC §4.4.7) —
-só o 3º passo muda estado, e só dos campos de auth/crypto/recovery.
+TOTP e `mfa_configured` **não são resetados** neste fluxo. TOTP continua
+obrigatório no login normal e no reset destrutivo, mas não na recuperação com
+Recovery Key.
 
 **D3 — Gate de configuração da recovery key.** Reaproveita o `mfa_token`
-existente (`type="mfa_pending"`) em vez de criar outro tipo de token: o
-onboarding de conta nova e o "alcance" de conta que já passou pela Fase 1
-mas ainda não tem recovery key (`mfa_configured=true`,
-`recovery_wrapped_kek=None`) passam pelo mesmo estado — o login já emite um
-`mfa_token` novo em ambos os casos. `POST /auth/recovery/setup` grava
-`recovery_wrapped_kek`/`recovery_nonce` e devolve `409` se já estiver
-configurada (mesma semântica de `/auth/totp/setup`).
+existente (`type="mfa_pending"`) para o onboarding. `POST
+/auth/recovery/setup` grava o envelope da KEK e também o material ECDSA
+(público + chave privada cifrada pela Recovery Key). Uma conta legada que já
+possui Recovery Key, mas ainda não possui o material de assinatura, recebe
+`recovery_upgrade_required=true` no login normal. Após validar o TOTP normal,
+a UI pede a mesma Recovery Key uma única vez e conclui `POST
+/auth/recovery/upgrade`; a Recovery Key não é substituída.
 
-**D4 — `LoginOut.status` ganha um terceiro valor.**
+**D4 — `LoginOut.status` ganha um terceiro valor.** O campo `recovery_upgrade_required` indica se uma conta legada possui Recovery Key, mas ainda não possui o material ECDSA; a migração ocorre após o TOTP do login normal.
 ```
 senha válida
     ├─ mfa_configured == false          → "mfa_setup_required"
@@ -94,28 +91,19 @@ conta nova.
 
 ## 3. Modelo de dados
 
-Migração Alembic nova (`004_add_recovery_and_reset.py`), `down_revision =
-"003_add_totp_mfa_fields"`:
+A implementação ficou incremental nas migrations `005_add_recovery_and_reset`,
+`006_recovery_key_challenge` e `007_recovery_signing_key`. O modelo final
+mantém o envelope da KEK e adiciona material para prova de posse:
 
-```sql
-ALTER TABLE users
-  ADD COLUMN recovery_wrapped_kek TEXT NULL,
-  ADD COLUMN recovery_nonce TEXT NULL;
+- `recovery_wrapped_kek` + `recovery_nonce`: KEK cifrada com a Recovery Key;
+- `recovery_public_key`: JWK público ECDSA P-256;
+- `recovery_wrapped_signing_key` + `recovery_signing_nonce`: chave privada
+  PKCS8 cifrada localmente com a Recovery Key;
+- `recovery_challenge_hash` + `recovery_challenge_expires_at`: challenge
+  descartável, válido por 5 minutos.
 
-CREATE TABLE password_reset_tokens (
-  id                UUID PK,
-  user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  token_hash        TEXT NOT NULL UNIQUE,
-  expires_at        TIMESTAMPTZ NOT NULL,
-  used_at           TIMESTAMPTZ NULL,
-  request_ip_hash   TEXT NULL,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
-`recovery_wrapped_kek`/`recovery_nonce`: base64, tamanho decodificado 48/12
-bytes (mesma convenção de `wrapped_data_key`/`wrapped_nonce` — AES-256-GCM,
-16 bytes de tag).
+O `recovery_verifier` da migration intermediária é legado e não participa mais
+da autenticação.
 
 ## 4. Criptografia cliente (`frontend/src/crypto.ts`)
 
@@ -129,6 +117,19 @@ export function generateRecoveryKey(): Uint8Array                       // 32 by
 export function recoveryKeyToDisplay(bytes: Uint8Array): string         // base64 em blocos de 4 chars
 export function recoveryKeyFromDisplay(display: string): Uint8Array     // remove espaços, b64decode
 export interface RecoveryWrap { recovery_wrapped_kek: string; recovery_nonce: string }
+
+export interface RecoverySigningMaterial {
+  recovery_public_key: string
+  recovery_wrapped_signing_key: string
+  recovery_signing_nonce: string
+}
+export async function generateRecoverySigningMaterial(recoveryKey: Uint8Array): Promise<RecoverySigningMaterial>
+export async function recoveryProof(
+  recoveryKey: Uint8Array,
+  wrappedSigningKeyB64: string,
+  signingNonceB64: string,
+  challengeB64: string,
+): Promise<string>
 
 // Para entradas v2, unwrap/wrap da data_key usa buildDataKeyAad(entry.id).
 // Entradas v1 usam as funções existentes sem AAD.
@@ -148,8 +149,9 @@ Base `/api/v1`. Novos endpoints (todos em `backend/app/routers/auth.py`):
 |---|---|---|---|
 | POST | `/auth/recovery/setup` | `mfa_token` | — |
 | POST | `/auth/recovery/init` | público | 5/minute |
-| POST | `/auth/recovery/verify` | público (email+totp_code) | 5/minute |
+| POST | `/auth/recovery/verify` | público (challenge+proof) | 5/minute |
 | POST | `/auth/recovery/recover` | `recovery_token` | — |
+| POST | `/auth/recovery/upgrade` | sessão autenticada | 5/minute |
 | POST | `/auth/password-reset/request` | público | 3/minute |
 | POST | `/auth/password-reset/validate` | público (token) | — |
 | POST | `/auth/password-reset/confirm` | público (token) | 5/minute |
@@ -158,8 +160,11 @@ Contratos (`backend/app/schemas.py`):
 
 ```python
 class RecoverySetupIn(BaseModel):
-    recovery_wrapped_kek: str   # b64, 48 bytes
-    recovery_nonce: str         # b64, 12 bytes
+    recovery_wrapped_kek: str
+    recovery_nonce: str
+    recovery_public_key: str
+    recovery_wrapped_signing_key: str
+    recovery_signing_nonce: str
 
 class RecoveryInitIn(BaseModel):
     email: EmailStr
@@ -168,10 +173,15 @@ class RecoveryInitOut(BaseModel):
     salt_crypto: str
     recovery_wrapped_kek: str
     recovery_nonce: str
+    recovery_challenge: str
+    recovery_public_key: str
+    recovery_wrapped_signing_key: str
+    recovery_signing_nonce: str
 
 class RecoveryVerifyIn(BaseModel):
     email: EmailStr
-    totp_code: str   # 6 digits
+    recovery_challenge: str
+    recovery_proof: str
 
 class RecoveryEntry(BaseModel):
     id: str
@@ -189,6 +199,9 @@ class RecoverIn(BaseModel):
     new_salt_crypto: str
     new_recovery_wrapped_kek: str
     new_recovery_nonce: str
+    new_recovery_public_key: str
+    new_recovery_wrapped_signing_key: str
+    new_recovery_signing_nonce: str
     entries: list[ChangePasswordEntryRewrap]   # reuso do tipo existente
 
 class PasswordResetRequestIn(BaseModel):
@@ -213,21 +226,22 @@ class PasswordResetConfirmIn(BaseModel):
 
 1. Tela "Esqueci a senha-mestra" → aba "Tenho minha recovery key" → usuário
    digita email.
-2. `POST /auth/recovery/init` → cliente guarda `salt_crypto` +
-   `recovery_wrapped_kek`/`recovery_nonce`.
+2. `POST /auth/recovery/init` → cliente guarda o envelope da KEK, o challenge
+   e o material público/cifrado de assinatura.
 3. Usuário digita a recovery key → `unwrapKekWithRecoveryKey` → KEK antiga
    (bytes crus). Falha aqui = erro genérico, fim.
-4. Usuário digita nova senha-mestra (validação client-side já existente:
-   ≥12 chars, não comum) + código TOTP atual.
-5. `POST /auth/recovery/verify {email, totp_code}` → `recovery_token` +
-   `entries` atuais.
+4. A Recovery Key desbloqueia localmente a chave privada ECDSA P-256 e assina
+   o challenge com SHA-256.
+5. `POST /auth/recovery/verify {email, recovery_challenge, recovery_proof}` →
+   servidor valida a assinatura e devolve `recovery_token` + `entries` atuais.
+   Nenhum TOTP é exigido neste caminho.
 6. Cliente: para cada entrada, usa `crypto_version` para escolher o formato:
    - v1: `unwrapDataKey(entry, kekAntiga)` → `wrapDataKey(dataKey, kekNova)`;
    - v2: `unwrapDataKey(entry, kekAntiga, buildDataKeyAad(entry.id))` →
      `wrapDataKey(dataKey, kekNova, buildDataKeyAad(entry.id))`.
    O recovery não precisa descriptografar os campos do cofre.
-   Gera novos salts, nova `auth_key`, nova recovery key, novo
-   `recovery_wrapped_kek` (wrap da KEK nova).
+   Gera novos salts, nova `auth_key`, nova Recovery Key e novo envelope
+   ECDSA cifrado pela nova Recovery Key.
 7. `POST /auth/recovery/recover` (header `Authorization: Bearer
    <recovery_token>`) com o payload montado. Sucesso → `TokenOut` (mesmo
    formato de `/auth/totp/confirm`), sessões antigas revogadas.
@@ -260,9 +274,8 @@ class PasswordResetConfirmIn(BaseModel):
 
 - `/auth/recovery/init` e `/auth/password-reset/request` sempre respondem
   com sucesso/formato genérico para email inexistente (anti-enumeração).
-- `/auth/recovery/verify` com TOTP errado → incrementa
-  `totp_failed_attempts`/`totp_locked_until` (mesmo contador do login/verify
-  normal — é o mesmo segredo TOTP sendo atacado).
+- `/auth/recovery/verify` com challenge/proof inválidos → `401` genérico; o
+  challenge é descartado após uso bem-sucedido ou após expirar.
 - `/auth/recovery/recover` com `entries` que não batem exatamente com as
   atuais → `400` (mesma regra de `change-password`).
 - `recovery_token` expirado/inválido/tipo errado → `401` em
@@ -279,12 +292,14 @@ class PasswordResetConfirmIn(BaseModel):
    `/recovery/setup` grava blobs → `/totp/setup` + `/totp/confirm` → tokens.
 2. Conta pós-Fase-1 sem recovery key loga → `recovery_setup_required` →
    `/recovery/setup` → `mfa_verify_required` no próximo login.
-3. `/recovery/setup` chamado duas vezes → segunda vez `409`.
-4. `/recovery/init` para email inexistente → blobs determinísticos, mesmo
-   formato de conta real (mesmo tamanho b64).
-5. `/recovery/verify` com TOTP correto → `recovery_token` + `entries`
-   batendo com o banco.
-6. `/recovery/verify` com TOTP errado repetido → lockout progressivo.
+3. `/recovery/setup` chamado duas vezes → segunda vez `409`; contas legadas
+   sem material ECDSA são migradas uma única vez pelo login normal.
+4. `/recovery/init` para email inexistente → envelope genérico e challenge
+   aleatório, sem revelar o estado de configuração da conta.
+5. `/recovery/verify` com assinatura válida → `recovery_token` + `entries`
+   batendo com o banco e sem exigir TOTP.
+6. `/recovery/verify` com assinatura inválida → `401`; challenge de sucesso é
+   de uso único.
 7. `/recovery/recover` com `entries` incompletas/a mais → `400`.
 8. `/recovery/recover` completo → `auth_hash`/salts/recovery atualizados,
    `wrapped_data_key` de cada entrada atualizado, sessões antigas revogadas,
@@ -303,9 +318,10 @@ Frontend (`vitest`): `crypto.ts` — round-trip `wrapKekWithRecoveryKey`/
 
 1. Toda conta ativa tem recovery key configurada antes de acessar o cofre
    (novas contas) ou é forçada a configurar uma vez (contas pós-Fase-1).
-2. Recuperar com recovery key correta preserva todas as entradas legíveis
-   com a nova senha-mestra; nenhuma etapa expõe a KEK ao servidor.
-3. Recuperar com recovery key errada nunca chega a enviar payload ao
+2. Recuperar com Recovery Key correta preserva todas as entradas legíveis
+   com a nova senha-mestra; nenhuma etapa expõe a Recovery Key, a KEK ou a
+   chave privada de assinatura ao servidor.
+3. Recuperar com Recovery Key errada nunca chega a enviar payload ao
    servidor (falha só no cliente).
 4. Reset destrutivo sempre apaga as entradas e reresseta MFA/recovery;
    nunca é reversível.

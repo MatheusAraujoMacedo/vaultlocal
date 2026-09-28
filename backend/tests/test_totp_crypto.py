@@ -3,7 +3,7 @@ import os
 os.environ.setdefault("JWT_SECRET", "test-secret-not-for-prod-0123456789ab")
 os.environ.setdefault("TOTP_ENCRYPTION_KEY", "a" * 64)
 
-from app.core.totp import encrypt_totp_secret, decrypt_totp_secret
+from app.core.totp import decrypt_totp_secret, encrypt_totp_secret
 
 
 def test_encrypt_decrypt_roundtrip():
@@ -23,8 +23,8 @@ def test_decrypt_rejects_tampered_token():
     secret = "JBSWY3DPEHPK3PXP"
     token = bytearray(encrypt_totp_secret(secret))
     token[-1] ^= 0xFF
-    from cryptography.fernet import InvalidToken
     import pytest
+    from cryptography.fernet import InvalidToken
     with pytest.raises(InvalidToken):
         decrypt_totp_secret(bytes(token))
 

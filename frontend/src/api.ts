@@ -78,8 +78,70 @@ export interface EntryBlob extends EntryListItem {
 }
 
 export interface LoginResult {
-  status: 'mfa_setup_required' | 'mfa_verify_required'
+  status: 'mfa_setup_required' | 'recovery_setup_required' | 'mfa_verify_required'
   mfa_token: string
+  recovery_upgrade_required: boolean
+}
+
+export interface GoogleHandoff {
+  status: 'existing' | 'setup_required'
+  email: string
+  salt_auth?: string
+  salt_crypto?: string
+}
+
+export interface WebAuthnRegisterOptions {
+  options: Record<string, unknown>
+  challenge: string
+  prf_salt: string
+}
+
+export interface WebAuthnLoginOptions {
+  options: Record<string, unknown>
+  challenge: string
+  prf_salts: Record<string, string>
+}
+
+export interface WebAuthnLoginResult {
+  access_token: string
+  refresh_token: string
+  credential_id: string
+  encrypted_kek: string
+  kek_nonce: string
+}
+
+export interface WebAuthnDevice {
+  credential_id: string
+  name: string
+  created_at: string
+  last_used_at: string | null
+  credential_backed_up: boolean
+}
+
+export interface WebAuthnDevicesResult {
+  devices: WebAuthnDevice[]
+}
+
+export interface RecoveryInit {
+  salt_crypto: string
+  recovery_wrapped_kek: string
+  recovery_nonce: string
+  recovery_challenge: string
+  recovery_public_key: string
+  recovery_wrapped_signing_key: string
+  recovery_signing_nonce: string
+}
+
+export interface RecoveryEntry {
+  id: string
+  crypto_version: 1 | 2
+  wrapped_data_key: string
+  wrapped_nonce: string
+}
+
+export interface RecoveryVerifyResult {
+  recovery_token: string
+  entries: RecoveryEntry[]
 }
 
 export interface Tokens {
@@ -125,6 +187,96 @@ export const api = {
       body: JSON.stringify({ email, auth_key }),
     }, false),
 
+  googleLoginStart: () => {
+    window.location.assign('/api/v1/auth/oidc/google/start')
+  },
+
+  googleLoginExchange: () =>
+    request<GoogleHandoff>('/auth/oidc/google/exchange', {
+      method: 'GET',
+    }, false),
+
+  googleLoginWithPassword: (auth_key: string) =>
+    request<LoginResult>('/auth/oidc/google/password', {
+      method: 'POST',
+      body: JSON.stringify({ auth_key }),
+    }, false),
+
+  googleLoginComplete: (new_salt_auth: string, new_salt_crypto: string, auth_key: string) =>
+    request<LoginResult>('/auth/oidc/google/complete', {
+      method: 'POST',
+      body: JSON.stringify({ new_salt_auth, new_salt_crypto, auth_key }),
+    }, false),
+
+  webauthnRegisterOptions: () =>
+    request<WebAuthnRegisterOptions>('/auth/webauthn/register/options', {
+      method: 'POST',
+    }),
+
+  webauthnRegisterVerify: (
+    challenge: string,
+    prf_salt: string,
+    credential: Record<string, unknown>,
+  ) =>
+    request<{ credential_id: string; ready_for_envelope: boolean }>('/auth/webauthn/register/verify', {
+      method: 'POST',
+      body: JSON.stringify({ challenge, prf_salt, credential }),
+    }),
+
+  webauthnRegisterEnvelope: (
+    credential_id: string,
+    encrypted_kek: string,
+    kek_nonce: string,
+  ) =>
+    request<void>('/auth/webauthn/register/envelope', {
+      method: 'POST',
+      body: JSON.stringify({ credential_id, encrypted_kek, kek_nonce }),
+    }),
+
+  webauthnDevices: () =>
+    request<WebAuthnDevicesResult>('/auth/webauthn/devices'),
+
+  webauthnRenameDevice: (credential_id: string, name: string) =>
+    request<WebAuthnDevice>(`/auth/webauthn/devices/${encodeURIComponent(credential_id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
+
+  webauthnRevokeDevice: (credential_id: string, totp_code: string) =>
+    request<void>(`/auth/webauthn/devices/${encodeURIComponent(credential_id)}/revoke`, {
+      method: 'POST',
+      body: JSON.stringify({ totp_code }),
+    }),
+
+  webauthnLocalOptions: (email: string) =>
+    request<WebAuthnLoginOptions>('/auth/webauthn/local/options', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }, false),
+
+  webauthnLocalVerify: (
+    challenge: string,
+    credential: Record<string, unknown>,
+  ) =>
+    request<WebAuthnLoginResult>('/auth/webauthn/local/verify', {
+      method: 'POST',
+      body: JSON.stringify({ challenge, credential }),
+    }, false),
+
+  webauthnGoogleOptions: () =>
+    request<WebAuthnLoginOptions>('/auth/webauthn/google/options', {
+      method: 'GET',
+    }, false),
+
+  webauthnGoogleVerify: (
+    challenge: string,
+    credential: Record<string, unknown>,
+  ) =>
+    request<WebAuthnLoginResult>('/auth/webauthn/google/verify', {
+      method: 'POST',
+      body: JSON.stringify({ challenge, credential }),
+    }, false),
+
   totpSetup: (mfa_token: string) =>
     request<TotpSetup>('/auth/totp/setup', {
       method: 'POST',
@@ -138,11 +290,104 @@ export const api = {
       body: JSON.stringify({ totp_code }),
     }, false),
 
+  recoverySetup: (
+    mfa_token: string,
+    recovery_wrapped_kek: string,
+    recovery_nonce: string,
+    recovery_public_key: string,
+    recovery_wrapped_signing_key: string,
+    recovery_signing_nonce: string,
+  ) =>
+    request<void>('/auth/recovery/setup', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${mfa_token}` },
+      body: JSON.stringify({
+        recovery_wrapped_kek,
+        recovery_nonce,
+        recovery_public_key,
+        recovery_wrapped_signing_key,
+        recovery_signing_nonce,
+      }),
+    }, false),
+
+  recoveryUpgrade: (
+    access_token: string,
+    recovery_public_key: string,
+    recovery_wrapped_signing_key: string,
+    recovery_signing_nonce: string,
+  ) =>
+    request<void>('/auth/recovery/upgrade', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${access_token}` },
+      body: JSON.stringify({
+        recovery_public_key,
+        recovery_wrapped_signing_key,
+        recovery_signing_nonce,
+      }),
+    }, false),
+
+  recoveryInit: (email: string) =>
+    request<RecoveryInit>('/auth/recovery/init', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }, false),
+
+  recoveryVerify: (
+    email: string,
+    recovery_challenge: string,
+    recovery_proof: string,
+  ) =>
+    request<RecoveryVerifyResult>('/auth/recovery/verify', {
+      method: 'POST',
+      body: JSON.stringify({ email, recovery_challenge, recovery_proof }),
+    }, false),
+
+  recoveryRecover: (
+    recovery_token: string,
+    data: {
+      new_auth_key: string
+      new_salt_auth: string
+      new_salt_crypto: string
+      new_recovery_wrapped_kek: string
+      new_recovery_nonce: string
+      new_recovery_public_key: string
+      new_recovery_wrapped_signing_key: string
+      new_recovery_signing_nonce: string
+      entries: Array<{ id: string; wrapped_data_key: string; wrapped_nonce: string }>
+    },
+  ) =>
+    request<Tokens>('/auth/recovery/recover', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${recovery_token}` },
+      body: JSON.stringify(data),
+    }, false),
+
   mfaVerify: (mfa_token: string, totp_code: string) =>
     request<Tokens>('/auth/mfa/verify', {
       method: 'POST',
       headers: { Authorization: `Bearer ${mfa_token}` },
       body: JSON.stringify({ totp_code }),
+    }, false),
+
+  passwordResetRequest: (email: string, totp_code?: string) =>
+    request<{ ok: boolean; token?: string }>('/auth/password-reset/request', {
+      method: 'POST',
+      body: JSON.stringify({ email, ...(totp_code ? { totp_code } : {}) }),
+    }, false),
+
+  passwordResetValidate: (token: string) =>
+    request<{ ok: boolean }>('/auth/password-reset/validate', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }, false),
+
+  passwordResetConfirm: (
+    token: string,
+    data: { new_auth_key: string; new_salt_auth: string; new_salt_crypto: string },
+  ) =>
+    request<void>('/auth/password-reset/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ token, ...data }),
     }, false),
 
   logout: () => {
@@ -172,12 +417,6 @@ export const api = {
 
   search: (q: string) =>
     request<EntryListItem[]>(`/entries/search?q=${encodeURIComponent(q)}`),
-
-  generatePassword: (length = 20, use_symbols = true) =>
-    request<{ password: string }>('/entries/generate/password', {
-      method: 'POST',
-      body: JSON.stringify({ length, use_symbols }),
-    }),
 
   postHealthReport: (report: HealthReportPayload) =>
     request<{ id: string }>('/health/report', {

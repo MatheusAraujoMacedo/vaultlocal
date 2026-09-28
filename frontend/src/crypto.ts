@@ -46,6 +46,30 @@ async function deriveRawKey(password: string, saltB64: string): Promise<Uint8Arr
   return hexToBytes(hex)
 }
 
+export function generateSecurePassword(length = 20, useSymbols = true): string {
+  if (!Number.isInteger(length) || length < 8 || length > 128) {
+    throw new Error('password length must be between 8 and 128 characters')
+  }
+
+  let alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  if (useSymbols) alphabet += '!@#$%^&*()-_=+[]{};:,.<>?'
+
+  const result: string[] = []
+  const limit = Math.floor(256 / alphabet.length) * alphabet.length
+  const bytes = new Uint8Array(64)
+
+  while (result.length < length) {
+    crypto.getRandomValues(bytes)
+    for (const byte of bytes) {
+      if (byte >= limit) continue
+      result.push(alphabet[byte % alphabet.length])
+      if (result.length === length) break
+    }
+  }
+
+  return result.join('')
+}
+
 export function randomSaltB64(): string {
   const bytes = new Uint8Array(16)
   crypto.getRandomValues(bytes)
@@ -86,13 +110,27 @@ export async function deriveKek(password: string, saltCryptoB64: string): Promis
 }
 
 let sessionKek: CryptoKey | null = null
+let sessionRawKek: Uint8Array | null = null
 
 export function setSessionKek(kek: CryptoKey): void {
   sessionKek = kek
 }
 
+export function setSessionRawKek(rawKek: Uint8Array): void {
+  if (rawKek.byteLength !== 32) throw new Error('invalid session KEK')
+  sessionRawKek?.fill(0)
+  sessionRawKek = new Uint8Array(rawKek)
+}
+
+export function getSessionRawKek(): Uint8Array {
+  if (!sessionRawKek) throw new Error('vault locked, login again')
+  return new Uint8Array(sessionRawKek)
+}
+
 export function clearSessionKek(): void {
   sessionKek = null
+  sessionRawKek?.fill(0)
+  sessionRawKek = null
 }
 
 export function getSessionKek(): CryptoKey {
@@ -223,4 +261,149 @@ export function isCommonPassword(password: string): boolean {
     isSequential(lowered) ||
     isKeyboardWalk(lowered)
   )
+}
+
+
+export async function deriveRawKek(password: string, saltCryptoB64: string): Promise<Uint8Array> {
+  return deriveRawKey(password, saltCryptoB64)
+}
+
+
+export async function rawKekToCryptoKey(rawKek: Uint8Array): Promise<CryptoKey> {
+  if (rawKek.byteLength !== 32) throw new Error('invalid KEK')
+  return importAesKey(rawKek, false)
+}
+
+
+export function generateRecoveryKey(): Uint8Array {
+  const bytes = new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  return bytes
+}
+
+
+export function recoveryKeyToDisplay(bytes: Uint8Array): string {
+  if (bytes.byteLength !== 32) throw new Error('recovery key must be 32 bytes')
+  return b64encode(bytes).match(/.{1,4}/g)!.join(' ')
+}
+
+
+export function recoveryKeyFromDisplay(display: string): Uint8Array {
+  const normalized = display.replace(/\s/g, '')
+  const bytes = b64decode(normalized)
+  if (bytes.byteLength !== 32) throw new Error('recovery key inválida')
+  return bytes
+}
+
+
+export interface RecoverySigningMaterial {
+  recovery_public_key: string
+  recovery_wrapped_signing_key: string
+  recovery_signing_nonce: string
+}
+
+
+export async function generateRecoverySigningMaterial(
+  recoveryKey: Uint8Array,
+): Promise<RecoverySigningMaterial> {
+  if (recoveryKey.byteLength !== 32) throw new Error('recovery key inválida')
+  const pair = await crypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    true,
+    ['sign', 'verify'],
+  ) as CryptoKeyPair
+  const publicJwk = await crypto.subtle.exportKey('jwk', pair.publicKey)
+  const privatePkcs8 = ensureArrayBuffer(await crypto.subtle.exportKey('pkcs8', pair.privateKey))
+  const recoveryAesKey = await importAesKey(recoveryKey, false)
+  const nonce = new Uint8Array(12)
+  crypto.getRandomValues(nonce)
+  const ciphertext = ensureArrayBuffer(await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: nonce as BufferSource },
+    recoveryAesKey,
+    privatePkcs8 as BufferSource,
+  ))
+  return {
+    recovery_public_key: JSON.stringify(publicJwk),
+    recovery_wrapped_signing_key: b64encode(ciphertext),
+    recovery_signing_nonce: b64encode(nonce),
+  }
+}
+
+
+export async function recoveryProof(
+  recoveryKey: Uint8Array,
+  wrappedSigningKeyB64: string,
+  signingNonceB64: string,
+  challengeB64: string,
+): Promise<string> {
+  if (recoveryKey.byteLength !== 32) throw new Error('recovery key inválida')
+  const challenge = b64decode(challengeB64)
+  if (challenge.byteLength !== 32) throw new Error('recovery challenge inválido')
+  const recoveryAesKey = await importAesKey(recoveryKey, false)
+  const privatePkcs8 = ensureArrayBuffer(await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: b64decode(signingNonceB64) as BufferSource },
+    recoveryAesKey,
+    b64decode(wrappedSigningKeyB64) as BufferSource,
+  ))
+  const privateKey = await crypto.subtle.importKey(
+    'pkcs8',
+    privatePkcs8 as BufferSource,
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['sign'],
+  )
+  const signature = ensureArrayBuffer(await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    privateKey,
+    challenge as BufferSource,
+  ))
+  if (signature.byteLength !== 64) throw new Error('assinatura de recovery inválida')
+  return b64encode(signature)
+}
+
+
+export interface RecoveryWrap {
+  recovery_wrapped_kek: string
+  recovery_nonce: string
+}
+
+
+export async function wrapKekWithRecoveryKey(
+  rawKek: Uint8Array,
+  recoveryKey: Uint8Array,
+): Promise<RecoveryWrap> {
+  if (rawKek.byteLength !== 32 || recoveryKey.byteLength !== 32) {
+    throw new Error('invalid recovery material')
+  }
+  const recoveryAesKey = await importAesKey(recoveryKey, false)
+  const nonce = new Uint8Array(12)
+  crypto.getRandomValues(nonce)
+  const ciphertext = ensureArrayBuffer(
+    await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: nonce as BufferSource },
+      recoveryAesKey,
+      rawKek as BufferSource,
+    ),
+  )
+  return { recovery_wrapped_kek: b64encode(ciphertext), recovery_nonce: b64encode(nonce) }
+}
+
+
+export async function unwrapKekWithRecoveryKey(
+  wrapped: RecoveryWrap,
+  recoveryKey: Uint8Array,
+): Promise<Uint8Array> {
+  if (recoveryKey.byteLength !== 32) throw new Error('recovery key inválida')
+  const recoveryAesKey = await importAesKey(recoveryKey, false)
+  const ciphertext = b64decode(wrapped.recovery_wrapped_kek)
+  const nonce = b64decode(wrapped.recovery_nonce)
+  const rawKek = ensureArrayBuffer(
+    await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: nonce as BufferSource },
+      recoveryAesKey,
+      ciphertext as BufferSource,
+    ),
+  )
+  if (rawKek.byteLength !== 32) throw new Error('recovery envelope inválido')
+  return rawKek
 }

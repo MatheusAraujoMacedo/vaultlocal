@@ -16,8 +16,11 @@ default-src 'self';
 script-src 'self' 'wasm-unsafe-eval';
 style-src 'self' 'unsafe-inline';
 img-src 'self' data:;
-font-src 'self' https://fonts.gstatic.com;
+font-src 'self';
 connect-src 'self';
+base-uri 'none';
+object-src 'none';
+form-action 'self';
 frame-ancestors 'none';
 ```
 
@@ -31,8 +34,11 @@ Definida em `frontend/nginx.conf` via `add_header Content-Security-Policy`.
 | `script-src` | `'self' 'wasm-unsafe-eval'` | `hash-wasm` (Argon2id) precisa de `WebAssembly.compile()`. `'wasm-unsafe-eval'` é específico para WASM e **não** habilita `eval()` em JS. Nunca usar `'unsafe-eval'` genérico. |
 | `style-src` | `'self' 'unsafe-inline'` | Tailwind aplica styles inline via `style="..."` em alguns componentes. Ideal: migrar para nonce/hash; mantido inline por simplicidade no MVP. |
 | `img-src` | `'self' data:` | `data:` necessário para o QR code do TOTP gerado por `qrcode.toDataURL()`. |
-| `font-src` | `'self' https://fonts.gstatic.com` | Fonte Inter via Google Fonts. Se migrarmos para fonte self-hosted, remover a origem externa. |
+| `font-src` | `'self'` | O frontend não depende mais de fontes externas. |
 | `connect-src` | `'self'` | Apenas chamadas same-origin (`/api/*` no `nginx.conf`). Nenhuma telemetria externa. |
+| `base-uri` | `'none'` | Impede alteração da base URL por HTML injetado. |
+| `object-src` | `'none'` | Desativa plugins/objetos que o cofre não precisa. |
+| `form-action` | `'self'` | Restringe destinos de submissão de formulários. |
 | `frame-ancestors` | `'none'` | Clickjacking defense (par com `X-Frame-Options: DENY`). |
 
 ## Outros headers de segurança (mesmo bloco)
@@ -51,9 +57,8 @@ Definida em `frontend/nginx.conf` via `add_header Content-Security-Policy`.
 - **`'unsafe-inline'` em styles**: Tailwind inline em classes utilitárias
   é falso-positivo comum; aceito por ora. Alternativa futura: build com
   hash/nonce por tag.
-- **Google Fonts**: vaza somente a origem do request à Google. Para máxima
-  privacidade, hospedar Inter localmente (`@fontsource/inter`) e remover
-  `fonts.gstatic.com` da CSP.
+- **Fontes externas**: não são usadas pelo frontend atual; manter essa
+  decisão reduz dependências e requests de terceiros.
 
 ## O que mudaria em deploy público (Render/SaaS)
 

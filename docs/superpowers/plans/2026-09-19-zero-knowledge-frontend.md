@@ -1,3 +1,9 @@
+> **Hardening note (2026-09-27):** the server-side password generator described
+> in this historical implementation plan was removed. Password generation is now
+> performed entirely in the browser with Web Crypto so the backend never sees the
+> generated secret. Treat the `/entries/generate/password` references below as
+> historical and do not reintroduce that endpoint.
+
 # Zero-knowledge Frontend Crypto Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

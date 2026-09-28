@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, EntryListItem } from '../api'
+import { api, EntryListItem, WebAuthnDevice } from '../api'
+import { getSessionRawKek } from '../crypto'
+import { encryptKekWithPrf, getPrfForCredential, registerPasskey } from '../webauthn'
 
 export default function Vault() {
   const [entries, setEntries] = useState<EntryListItem[]>([])
@@ -8,11 +10,37 @@ export default function Vault() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [quickAccessLoading, setQuickAccessLoading] = useState(false)
+  const [quickAccessMessage, setQuickAccessMessage] = useState('')
+  const [quickAccessPending, setQuickAccessPending] = useState<{
+    credentialId: string
+    prfSalt: string
+  } | null>(null)
+  const [devices, setDevices] = useState<WebAuthnDevice[]>([])
+  const [devicesLoading, setDevicesLoading] = useState(true)
+  const [deviceAction, setDeviceAction] = useState<string | null>(null)
   const nav = useNavigate()
 
   useEffect(() => {
     loadAll()
+    loadDevices()
   }, [])
+
+  async function loadDevices() {
+    setDevicesLoading(true)
+    try {
+      const data = await api.webauthnDevices()
+      setDevices(data.devices)
+    } catch (err: any) {
+      if (err.message?.includes('401') || err.message === 'invalid token') {
+        api.logout()
+        nav('/login')
+        return
+      }
+    } finally {
+      setDevicesLoading(false)
+    }
+  }
 
   async function loadAll() {
     setLoading(true)
@@ -46,6 +74,110 @@ export default function Vault() {
     }, 250)
     return () => clearTimeout(t)
   }, [search])
+
+  async function registerQuickAccess() {
+    setQuickAccessMessage('')
+    setError('')
+    setQuickAccessLoading(true)
+    try {
+      const registration = await api.webauthnRegisterOptions()
+      const credential = await registerPasskey(registration.options)
+      const verified = await api.webauthnRegisterVerify(
+        registration.challenge,
+        registration.prf_salt,
+        credential,
+      )
+      setQuickAccessPending({
+        credentialId: verified.credential_id,
+        prfSalt: registration.prf_salt,
+      })
+      setQuickAccessMessage('Credencial salva. Clique em “Concluir ativação” para confirmar o acesso rápido neste dispositivo.')
+    } catch (err: any) {
+      setQuickAccessMessage('')
+      setError(err.message || 'Não foi possível registrar a passkey')
+    } finally {
+      setQuickAccessLoading(false)
+    }
+  }
+
+  async function renameDevice(device: WebAuthnDevice) {
+    const proposed = window.prompt('Nome deste dispositivo/passkey:', device.name)
+    if (proposed === null) return
+    const name = proposed.trim()
+    if (!name) {
+      setError('O nome do dispositivo não pode ficar vazio')
+      return
+    }
+    setDeviceAction(device.credential_id)
+    setError('')
+    try {
+      const updated = await api.webauthnRenameDevice(device.credential_id, name)
+      setDevices((current) =>
+        current.map((item) =>
+          item.credential_id === updated.credential_id ? updated : item,
+        ),
+      )
+    } catch (err: any) {
+      setError(err.message || 'Não foi possível renomear o dispositivo')
+    } finally {
+      setDeviceAction(null)
+    }
+  }
+
+  async function revokeDevice(device: WebAuthnDevice) {
+    const totp = window.prompt(
+      'Para revogar esta passkey, digite o código TOTP atual:',
+    )
+    if (totp === null) return
+    if (!/^\d{6}$/.test(totp)) {
+      setError('Digite um código TOTP de 6 dígitos')
+      return
+    }
+    setDeviceAction(device.credential_id)
+    setError('')
+    try {
+      await api.webauthnRevokeDevice(device.credential_id, totp)
+      setDevices((current) =>
+        current.filter((item) => item.credential_id !== device.credential_id),
+      )
+    } catch (err: any) {
+      setError(err.message || 'Não foi possível revogar o dispositivo')
+    } finally {
+      setDeviceAction(null)
+    }
+  }
+
+  async function completeQuickAccess() {
+    setQuickAccessMessage('')
+    setError('')
+    setQuickAccessLoading(true)
+    try {
+      if (!quickAccessPending) throw new Error('Nenhuma credencial aguardando ativação')
+      const rawKek = getSessionRawKek()
+      const prfOutput = await getPrfForCredential(
+        quickAccessPending.credentialId,
+        quickAccessPending.prfSalt,
+      )
+      const envelope = await encryptKekWithPrf(
+        rawKek,
+        prfOutput,
+        quickAccessPending.credentialId,
+      )
+      await api.webauthnRegisterEnvelope(
+        quickAccessPending.credentialId,
+        envelope.encrypted_kek,
+        envelope.kek_nonce,
+      )
+      setQuickAccessPending(null)
+      await loadDevices()
+      setQuickAccessMessage('Acesso rápido ativado. Nos próximos logins, use uma passkey confiável para abrir o cofre.')
+    } catch (err: any) {
+      setQuickAccessMessage('')
+      setError(err.message || 'Não foi possível concluir o acesso rápido')
+    } finally {
+      setQuickAccessLoading(false)
+    }
+  }
 
   function logout() {
     api.logout()
@@ -108,6 +240,85 @@ export default function Vault() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
+        <div className="mb-4 rounded-lg border border-stone-200 bg-white px-4 py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-stone-900">Acesso rápido com passkey</p>
+              <p className="text-xs text-stone-500 mt-1">
+                Use uma passkey, biometria ou PIN para abrir o cofre sem digitar a senha-mestra.
+              </p>
+              {quickAccessMessage && (
+                <p className="text-xs text-emerald-700 mt-2">{quickAccessMessage}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={quickAccessPending ? completeQuickAccess : registerQuickAccess}
+              disabled={quickAccessLoading}
+              className="shrink-0 inline-flex items-center justify-center px-3 py-2 rounded-md border border-stone-300 bg-stone-50 text-stone-900 text-sm font-medium hover:bg-stone-100 disabled:opacity-50 transition"
+            >
+              {quickAccessLoading
+                ? (quickAccessPending ? 'Concluindo…' : 'Registrando…')
+                : (quickAccessPending ? 'Concluir ativação' : 'Ativar acesso rápido')}
+            </button>
+          </div>
+        </div>
+
+        <div className="mb-6 rounded-lg border border-stone-200 bg-white px-4 py-4">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <p className="text-sm font-medium text-stone-900">Dispositivos confiáveis</p>
+              <p className="text-xs text-stone-500 mt-1">
+                Revogue uma passkey remotamente; a revogação exige seu TOTP atual.
+              </p>
+            </div>
+            <span className="text-xs text-stone-400">{devices.length}</span>
+          </div>
+          {devicesLoading ? (
+            <p className="text-xs text-stone-500">Carregando dispositivos…</p>
+          ) : devices.length === 0 ? (
+            <p className="text-xs text-stone-500">Nenhuma passkey confiável cadastrada.</p>
+          ) : (
+            <div className="space-y-2">
+              {devices.map((device) => (
+                <div
+                  key={device.credential_id}
+                  className="flex flex-col gap-2 rounded-md border border-stone-200 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-stone-800 truncate">{device.name}</p>
+                    <p className="text-xs text-stone-500 mt-1">
+                      Criado em {new Date(device.created_at).toLocaleString("pt-BR")}
+                      {device.last_used_at
+                        ? ` · usado em ${new Date(device.last_used_at).toLocaleString("pt-BR")}`
+                        : ''}
+                      {device.credential_backed_up ? ' · sincronizado' : ' · neste autenticador'}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => renameDevice(device)}
+                      disabled={deviceAction === device.credential_id}
+                      className="text-xs px-2.5 py-1.5 rounded border border-stone-300 text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+                    >
+                      Renomear
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => revokeDevice(device)}
+                      disabled={deviceAction === device.credential_id}
+                      className="text-xs px-2.5 py-1.5 rounded border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      {deviceAction === device.credential_id ? 'Processando…' : 'Revogar'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="mb-4">
           <input
             type="text"

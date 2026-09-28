@@ -153,13 +153,16 @@ async def test_entries_isolated_between_users(client, register_and_login):
     assert resp.json() == []
 
 
-async def test_generate_password_respects_length_and_symbols(client, register_and_login):
-    headers = await _auth_headers(register_and_login, "frank@test.com")
+async def test_search_rejects_overlong_query(client, register_and_login):
+    headers = await _auth_headers(register_and_login, "long-query@test.com")
+    resp = await client.get("/api/v1/entries/search", headers=headers, params={"q": "x" * 129})
+    assert resp.status_code == 422
+
+
+async def test_create_entry_rejects_overlong_tags(client, register_and_login):
+    headers = await _auth_headers(register_and_login, "long-tags@test.com")
     resp = await client.post(
-        "/api/v1/entries/generate/password", headers=headers,
-        json={"length": 24, "use_symbols": False},
+        "/api/v1/entries", headers=headers,
+        json=_entry_payload(tags="x" * 513),
     )
-    assert resp.status_code == 200
-    pwd = resp.json()["password"]
-    assert len(pwd) == 24
-    assert all(c.isalnum() for c in pwd)
+    assert resp.status_code == 422
