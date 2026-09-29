@@ -5,8 +5,8 @@ Revises: 010_breached_count
 Create Date: 2026-09-28
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "011_security_events"
 down_revision = "010_breached_count"

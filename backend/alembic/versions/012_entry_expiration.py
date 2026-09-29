@@ -5,9 +5,8 @@ Revises: 011_security_events
 Create Date: 2026-09-29
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "012_entry_expiration"
 down_revision = "011_security_events"
