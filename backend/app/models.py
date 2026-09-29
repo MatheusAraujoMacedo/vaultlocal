@@ -105,6 +105,9 @@ class VaultEntry(Base):
     expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
 
     wrapped_data_key: Mapped[str] = mapped_column(Text)
     wrapped_nonce: Mapped[str] = mapped_column(String(64))

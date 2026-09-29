@@ -70,6 +70,11 @@ export interface EntryListItem {
   updated_at: string
 }
 
+export interface TrashEntry extends EntryListItem {
+  deleted_at: string
+  purge_at: string
+}
+
 export interface EntryBlob extends EntryListItem {
   crypto_version: 1 | 2
   username_enc: string
@@ -439,6 +444,14 @@ export const api = {
 
   deleteEntry: (id: string) =>
     request<void>(`/entries/${id}`, { method: 'DELETE' }),
+
+  listTrash: () => request<TrashEntry[]>('/entries/trash'),
+
+  restoreEntry: (id: string) =>
+    request<EntryBlob>(`/entries/${id}/restore`, { method: 'POST' }),
+
+  permanentlyDeleteEntry: (id: string) =>
+    request<void>(`/entries/${id}/permanent`, { method: 'DELETE' }),
 
   search: (q: string) =>
     request<EntryListItem[]>(`/entries/search?q=${encodeURIComponent(q)}`),

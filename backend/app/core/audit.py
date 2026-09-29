@@ -6,6 +6,8 @@ SECURITY_EVENT_TYPES = {
     "entry_created",
     "entry_updated",
     "entry_deleted",
+    "entry_restored",
+    "entry_permanently_deleted",
     "health_scan",
     "passkey_added",
     "passkey_renamed",

@@ -81,6 +81,7 @@ guarde-a offline.
   por senha independente, Argon2id + AES-256-GCM. O arquivo exportado não contém
   segredos em claro e as importações são recriptografadas sob a KEK do cofre atual.
 - **Security Timeline** — histórico de eventos administrativos e de segurança, sem registrar segredos, tokens ou conteúdo das entradas.
+- **Lixeira segura** — entradas excluídas deixam de aparecer no cofre e permanecem cifradas por 30 dias para restauração; a exclusão permanente é explícita.
 - **Expiração de credenciais** — metadado opcional por entrada, visível no cofre e filtrável no Health Dashboard.
 - **Gerador de senhas local** — geração feita no navegador via Web Crypto, sem o servidor ver a senha gerada.
 - **Busca** — sobre `title`/`site` (claro) server-side.

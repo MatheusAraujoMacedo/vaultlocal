@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
@@ -7,9 +7,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.audit import record_security_event
 from ..deps import get_current_user, get_db
 from ..models import User, VaultEntry
-from ..schemas import EntryIn, EntryListItem, EntryOut
+from ..schemas import EntryIn, EntryListItem, EntryOut, TrashEntryOut
 
 router = APIRouter(prefix="/entries", tags=["entries"])
+TRASH_RETENTION_DAYS = 30
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _to_out(e: VaultEntry) -> EntryOut:
@@ -39,7 +45,7 @@ async def list_entries(
     db: AsyncSession = Depends(get_db),
 ):
     rows = await db.scalars(
-        select(VaultEntry).where(VaultEntry.user_id == user.id).order_by(VaultEntry.updated_at.desc())
+        select(VaultEntry).where(VaultEntry.user_id == user.id, VaultEntry.deleted_at.is_(None)).order_by(VaultEntry.updated_at.desc())
     )
     return [
         EntryListItem(
@@ -65,6 +71,7 @@ async def search_entries(
     rows = await db.scalars(
         select(VaultEntry).where(
             VaultEntry.user_id == user.id,
+            VaultEntry.deleted_at.is_(None),
             or_(VaultEntry.title.ilike(like), VaultEntry.site.ilike(like)),
         )
     )
@@ -115,6 +122,81 @@ async def create_entry(
     return _to_out(entry)
 
 
+@router.get("/trash", response_model=list[TrashEntryOut])
+async def list_trash(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=TRASH_RETENTION_DAYS)
+    expired = await db.scalars(
+        select(VaultEntry).where(
+            VaultEntry.user_id == user.id,
+            VaultEntry.deleted_at.is_not(None),
+            VaultEntry.deleted_at < cutoff,
+        )
+    )
+    for entry in expired:
+        await db.delete(entry)
+    await db.commit()
+
+    rows = await db.scalars(
+        select(VaultEntry).where(
+            VaultEntry.user_id == user.id,
+            VaultEntry.deleted_at.is_not(None),
+        ).order_by(VaultEntry.deleted_at.desc())
+    )
+    return [
+        {
+            "id": e.id,
+            "title": e.title,
+            "site": e.site,
+            "tags": e.tags or "",
+            "expires_at": e.expires_at.isoformat() if e.expires_at else None,
+            "created_at": e.created_at.isoformat(),
+            "updated_at": e.updated_at.isoformat(),
+            "deleted_at": e.deleted_at.isoformat(),
+            "purge_at": (e.deleted_at + timedelta(days=TRASH_RETENTION_DAYS)).isoformat(),
+        }
+        for e in rows
+    ]
+
+
+@router.post("/{entry_id}/restore", response_model=EntryOut)
+async def restore_entry(
+    entry_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    e = await db.get(VaultEntry, entry_id)
+    if not e or e.user_id != user.id or e.deleted_at is None:
+        raise HTTPException(404, "not found")
+    if _as_utc(e.deleted_at) < datetime.now(timezone.utc) - timedelta(days=TRASH_RETENTION_DAYS):
+        await db.delete(e)
+        await db.commit()
+        raise HTTPException(410, "entry retention period expired")
+    e.deleted_at = None
+    e.updated_at = datetime.now(timezone.utc)
+    await record_security_event(db, user.id, "entry_restored")
+    await db.commit()
+    await db.refresh(e)
+    return _to_out(e)
+
+
+@router.delete("/{entry_id}/permanent", status_code=204)
+async def permanently_delete_entry(
+    entry_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    e = await db.get(VaultEntry, entry_id)
+    if not e or e.user_id != user.id or e.deleted_at is None:
+        raise HTTPException(404, "not found")
+    await db.delete(e)
+    await record_security_event(db, user.id, "entry_permanently_deleted")
+    await db.commit()
+
+
 @router.get("/{entry_id}", response_model=EntryOut)
 async def get_entry(
     entry_id: str,
@@ -122,7 +204,7 @@ async def get_entry(
     db: AsyncSession = Depends(get_db),
 ):
     e = await db.get(VaultEntry, entry_id)
-    if not e or e.user_id != user.id:
+    if not e or e.user_id != user.id or e.deleted_at is not None:
         raise HTTPException(404, "not found")
     return _to_out(e)
 
@@ -135,7 +217,7 @@ async def update_entry(
     db: AsyncSession = Depends(get_db),
 ):
     e = await db.get(VaultEntry, entry_id)
-    if not e or e.user_id != user.id:
+    if not e or e.user_id != user.id or e.deleted_at is not None:
         raise HTTPException(404, "not found")
     if str(body.id) != entry_id:
         raise HTTPException(400, "entry id does not match path")
@@ -166,8 +248,9 @@ async def delete_entry(
     db: AsyncSession = Depends(get_db),
 ):
     e = await db.get(VaultEntry, entry_id)
-    if not e or e.user_id != user.id:
+    if not e or e.user_id != user.id or e.deleted_at is not None:
         raise HTTPException(404, "not found")
-    await db.delete(e)
+    e.deleted_at = datetime.now(timezone.utc)
+    e.updated_at = datetime.now(timezone.utc)
     await record_security_event(db, user.id, "entry_deleted")
     await db.commit()

@@ -7,6 +7,7 @@ import EntryDetail from './pages/EntryDetail'
 import EntryForm from './pages/EntryForm'
 import Health from './pages/Health'
 import Timeline from './pages/Timeline'
+import Trash from './pages/Trash'
 import { api } from './api'
 import { createAutoLock } from './security/autoLock'
 import { useEffect, useState } from 'react'
@@ -68,6 +69,10 @@ export default function App() {
       <Route
         path="/timeline"
         element={authed ? <Timeline /> : <Navigate to="/login" replace />}
+      />
+      <Route
+        path="/trash"
+        element={authed ? <Trash /> : <Navigate to="/login" replace />}
       />
     </Routes>
   )

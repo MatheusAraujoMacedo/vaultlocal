@@ -487,11 +487,22 @@ class EntryListItem(BaseModel):
     updated_at: str
 
 
+class TrashEntryOut(EntryListItem):
+    deleted_at: str
+    purge_at: str
+
+
+class TrashListOut(BaseModel):
+    entries: list[TrashEntryOut]
+
+
 class SecurityEventOut(BaseModel):
     event_type: Literal[
         "entry_created",
         "entry_updated",
         "entry_deleted",
+        "entry_restored",
+        "entry_permanently_deleted",
         "health_scan",
         "passkey_added",
         "passkey_renamed",

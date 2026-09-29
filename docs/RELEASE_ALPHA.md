@@ -17,6 +17,7 @@ fluxos de autenticação, proteção do cofre, análise de segurança e recupera
 - [x] Auto Lock
 - [x] Exportação/importação cifrada
 - [x] Security Timeline
+- [x] Lixeira segura com restauração e retenção de 30 dias
 - [x] Health Dashboard
 - [x] HIBP online por k-anonymity
 - [x] Adapter para HIBP offline

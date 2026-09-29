@@ -122,7 +122,7 @@ async def test_update_entry_changes_blobs(client, register_and_login):
     assert updated["updated_at"] >= resp.json()["created_at"]
 
 
-async def test_delete_entry_removes_it(client, register_and_login):
+async def test_delete_entry_moves_it_to_trash_and_restore_works(client, register_and_login):
     headers = await _auth_headers(register_and_login, "erin@test.com")
     resp = await client.post("/api/v1/entries", headers=headers, json=_entry_payload(title="Temp"))
     entry_id = resp.json()["id"]
@@ -132,6 +132,39 @@ async def test_delete_entry_removes_it(client, register_and_login):
 
     resp = await client.get(f"/api/v1/entries/{entry_id}", headers=headers)
     assert resp.status_code == 404
+
+    listed = await client.get("/api/v1/entries", headers=headers)
+    assert listed.json() == []
+
+    trash = await client.get("/api/v1/entries/trash", headers=headers)
+    assert trash.status_code == 200
+    assert len(trash.json()) == 1
+    assert trash.json()[0]["id"] == entry_id
+    assert "purge_at" in trash.json()[0]
+
+    restored = await client.post(f"/api/v1/entries/{entry_id}/restore", headers=headers)
+    assert restored.status_code == 200
+
+    fetched = await client.get(f"/api/v1/entries/{entry_id}", headers=headers)
+    assert fetched.status_code == 200
+
+    trash = await client.get("/api/v1/entries/trash", headers=headers)
+    assert trash.json() == []
+
+
+async def test_permanent_delete_removes_trashed_entry(client, register_and_login):
+    headers = await _auth_headers(register_and_login, "permanent@test.com")
+    created = await client.post("/api/v1/entries", headers=headers, json=_entry_payload(title="Permanent"))
+    entry_id = created.json()["id"]
+
+    deleted = await client.delete(f"/api/v1/entries/{entry_id}", headers=headers)
+    assert deleted.status_code == 204
+
+    permanent = await client.delete(f"/api/v1/entries/{entry_id}/permanent", headers=headers)
+    assert permanent.status_code == 204
+
+    trash = await client.get("/api/v1/entries/trash", headers=headers)
+    assert trash.json() == []
 
 
 async def test_entries_require_authentication(client):
