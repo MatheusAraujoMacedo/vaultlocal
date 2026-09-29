@@ -30,10 +30,12 @@ migrate:
 revision:
 	cd backend && ../.venv/bin/alembic revision --autogenerate -m "$(m)"
 
+HIBP_DOWNLOADER ?= $(HOME)/.dotnet/tools/haveibeenpwned-downloader
+
 hibp-download:
 	@mkdir -p data/hibp/sha1
-	@command -v haveibeenpwned-downloader >/dev/null || (echo "Instale haveibeenpwned-downloader (.NET 10+): https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader" && exit 1)
-	haveibeenpwned-downloader data/hibp/sha1 --max-retries 5 $(if $(P),-p $(P),)
+	@test -x "$(HIBP_DOWNLOADER)" || (echo "Instale haveibeenpwned-downloader (.NET 10+): https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader" && exit 1)
+	"$(HIBP_DOWNLOADER)" data/hibp/sha1 --max-retries 5 -o $(if $(P),-p $(P),)
 
 hibp-index-ready:
 	@test -f data/hibp/sha1/sha1.index

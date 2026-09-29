@@ -1,5 +1,7 @@
 # VaultLocal
 
+Status de release: **0.2.0-alpha.1** — alpha técnico, local-first, com foco em segurança.
+
 Gerenciador de senhas self-hosted, local-first, com criptografia zero-knowledge
 end-to-end. Stack: FastAPI + React + Postgres via Docker Compose. Bind padrão
 em `127.0.0.1`.
@@ -69,6 +71,13 @@ guarde-a offline.
   nem a KEK em claro. Login rápido = Google ou e-mail + passkey confiável.
 - **Gestão de dispositivos confiáveis** — múltiplas passkeys por conta, renomeação
   e revogação individual. A revogação exige step-up com TOTP.
+- **Auto Lock** — após 5 minutos sem atividade, o cliente encerra a sessão, limpa a
+  KEK mantida em memória e exige nova autenticação.
+- **Exportação/importação cifrada** — transferência portátil protegida no navegador
+  por senha independente, Argon2id + AES-256-GCM. O arquivo exportado não contém
+  segredos em claro e as importações são recriptografadas sob a KEK do cofre atual.
+- **Security Timeline** — histórico de eventos administrativos e de segurança, sem registrar segredos, tokens ou conteúdo das entradas.
+- **Expiração de credenciais** — metadado opcional por entrada, visível no cofre e filtrável no Health Dashboard.
 - **Gerador de senhas local** — geração feita no navegador via Web Crypto, sem o servidor ver a senha gerada.
 - **Busca** — sobre `title`/`site` (claro) server-side.
 - **Health Dashboard** (`/health`) — score 0–100 do cofre; detecta senhas
@@ -79,6 +88,8 @@ guarde-a offline.
   `docs/features/health-dashboard.md`.
 - **Auditor/security headers** — CSP, `X-Frame-Options`, `Referrer-Policy`,
   `Permissions-Policy` restritivas. Ver `docs/deployment/csp.md`.
+
+Segurança e modelo de ameaça: consulte **SECURITY.md** e **docs/deployment/hardening.md**.
 
 ## Roadmap (RFC ativa)
 
@@ -94,7 +105,8 @@ Pontos de retomada:
 | 2 | Recovery key + reset destrutivo com token | ✅ implementado |
 | 3 | Google OIDC como identidade (opcional) | ✅ implementado — E2E validado |
 | 4 | WebAuthn / passkey para acesso rápido | ✅ 4.1 E2E browser validado; 4.2 implementado |
-| 5 | Breach check | ✅ 5.1 HIBP online k-anonymity + ✅ 5.2 adapter para índice local; 📋 importar/atualizar corpus |
+| 5 | Breach check | ✅ HIBP online k-anonymity + ✅ adapter para índice local; ⏳ corpus local em importação |
+| 6 | Hardening e portabilidade local | ✅ Auto Lock + ✅ exportação/importação cifrada + ✅ Security Timeline + ✅ hardening HTTP/CSP |
 
 ## Dev local (sem Docker)
 
@@ -121,7 +133,7 @@ make test           # backend (pytest)
 make test-frontend  # frontend (vitest)
 ```
 
-Estado atual: **106/106 backend**, **29/29 frontend**.
+Estado atual da suíte: **119/119 backend**, **43/43 frontend** + TypeScript, build de produção, Ruff e migração Alembic validados.
 
 ## Backup
 
@@ -130,8 +142,9 @@ make backup
 ```
 
 Dump compactado em `backups/`. Os segredos do cofre permanecem como ciphertext,
-mas o arquivo ainda contém metadados e hashes de autenticação. Uma exportação
-portátil cifrada ponta a ponta será responsabilidade do cliente no roadmap.
+mas o arquivo ainda contém metadados e hashes de autenticação. A exportação
+portátil cifrada ponta a ponta é processada exclusivamente no cliente; o servidor
+não recebe o arquivo exportado nem a senha usada para protegê-lo.
 
 ## Estrutura do repositório
 

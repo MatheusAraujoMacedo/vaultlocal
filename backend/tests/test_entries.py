@@ -166,3 +166,30 @@ async def test_create_entry_rejects_overlong_tags(client, register_and_login):
         json=_entry_payload(tags="x" * 513),
     )
     assert resp.status_code == 422
+
+
+async def test_entry_expiration_roundtrips(client, register_and_login):
+    headers = await _auth_headers(register_and_login, "expiration@test.com")
+    expires_at = "2030-01-02T03:04:05+00:00"
+    payload = _entry_payload(expires_at=expires_at)
+
+    created = await client.post("/api/v1/entries", headers=headers, json=payload)
+    assert created.status_code == 201
+    assert created.json()["expires_at"].startswith("2030-01-02T03:04:05")
+
+    entry_id = created.json()["id"]
+    fetched = await client.get(f"/api/v1/entries/{entry_id}", headers=headers)
+    assert fetched.status_code == 200
+    assert fetched.json()["expires_at"].startswith("2030-01-02T03:04:05")
+
+    listed = await client.get("/api/v1/entries", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()[0]["expires_at"].startswith("2030-01-02T03:04:05")
+
+    updated = await client.put(
+        f"/api/v1/entries/{entry_id}",
+        headers=headers,
+        json=_entry_payload(id=entry_id, expires_at="2031-05-06T07:08:09+00:00"),
+    )
+    assert updated.status_code == 200
+    assert updated.json()["expires_at"].startswith("2031-05-06T07:08:09")

@@ -406,6 +406,7 @@ class EntryIn(BaseModel):
     crypto_version: Literal[2] = 2
     title: str = Field(min_length=1, max_length=255)
     site: str | None = Field(default=None, max_length=255)
+    expires_at: datetime | None = None
     username_enc: str
     nonce_username: str
     password_enc: str
@@ -462,6 +463,7 @@ class EntryOut(BaseModel):
     crypto_version: Literal[1, 2]
     title: str
     site: str | None
+    expires_at: datetime | None
     username_enc: str
     nonce_username: str
     password_enc: str
@@ -480,8 +482,31 @@ class EntryListItem(BaseModel):
     title: str
     site: str | None
     tags: str
+    expires_at: str | None
     created_at: str
     updated_at: str
+
+
+class SecurityEventOut(BaseModel):
+    event_type: Literal[
+        "entry_created",
+        "entry_updated",
+        "entry_deleted",
+        "health_scan",
+        "passkey_added",
+        "passkey_renamed",
+        "passkey_revoked",
+        "password_changed",
+        "mfa_enabled",
+        "recovery_used",
+        "login_success",
+        "logout",
+    ]
+    created_at: str
+
+
+class SecurityTimelineOut(BaseModel):
+    events: list[SecurityEventOut]
 
 
 class HealthReportIn(BaseModel):

@@ -65,6 +65,7 @@ export interface EntryListItem {
   title: string
   site: string | null
   tags: string
+  expires_at: string | null
   created_at: string
   updated_at: string
 }
@@ -170,6 +171,25 @@ export interface HealthReportPayload {
 export interface HealthReport extends HealthReportPayload {
   id: string
   user_id: string
+  created_at: string
+}
+
+export type SecurityEventType =
+  | 'login_success'
+  | 'logout'
+  | 'entry_created'
+  | 'entry_updated'
+  | 'entry_deleted'
+  | 'health_scan'
+  | 'passkey_added'
+  | 'passkey_renamed'
+  | 'passkey_revoked'
+  | 'password_changed'
+  | 'mfa_enabled'
+  | 'recovery_used'
+
+export interface SecurityEvent {
+  event_type: SecurityEventType
   created_at: string
 }
 
@@ -431,6 +451,9 @@ export const api = {
 
   getLocalBreachStatus: () =>
     request<{ available: boolean; source: string }>('/health/breach/local/status'),
+
+  getSecurityTimeline: (limit = 100) =>
+    request<{ events: SecurityEvent[] }>(`/health/timeline?limit=${limit}`),
 
   getLatestHealth: async (): Promise<HealthReport | null> => {
     const token = getToken()

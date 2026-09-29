@@ -67,6 +67,9 @@ class User(Base):
     health_report: Mapped["HealthReport | None"] = relationship(
         back_populates="user", cascade="all, delete-orphan", uselist=False
     )
+    security_events: Mapped[list["SecurityEvent"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
     sessions: Mapped[list["Session"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
@@ -99,6 +102,9 @@ class VaultEntry(Base):
     nonce_notes: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     tags: Mapped[str] = mapped_column(String(512), default="")  # comma separated for sqlite compat
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     wrapped_data_key: Mapped[str] = mapped_column(Text)
     wrapped_nonce: Mapped[str] = mapped_column(String(64))
@@ -213,3 +219,17 @@ class HealthReport(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="health_report")
+
+class SecurityEvent(Base):
+    __tablename__ = "security_events"
+
+    id: Mapped[str] = _uuid_pk()
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    event_type: Mapped[str] = mapped_column(String(40), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True
+    )
+
+    user: Mapped[User] = relationship(back_populates="security_events")

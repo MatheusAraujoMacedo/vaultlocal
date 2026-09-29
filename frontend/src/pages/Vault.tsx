@@ -3,6 +3,17 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api, EntryListItem, WebAuthnDevice } from '../api'
 import { getSessionRawKek } from '../crypto'
 import { encryptKekWithPrf, getPrfForCredential, registerPasskey } from '../webauthn'
+import { createEncryptedExport, decryptEncryptedExport, encryptPortableEntry } from '../export'
+
+function expirationLabel(value: string | null): { text: string; className: string } | null {
+  if (!value) return null
+  const time = new Date(value).getTime()
+  if (Number.isNaN(time)) return null
+  const days = Math.ceil((time - Date.now()) / (24 * 60 * 60 * 1000))
+  if (days <= 0) return { text: 'Expirada', className: 'text-red-700' }
+  if (days <= 30) return { text: 'Expira em ' + days + 'd', className: 'text-amber-700' }
+  return { text: 'Expira em ' + days + 'd', className: 'text-stone-400' }
+}
 
 export default function Vault() {
   const [entries, setEntries] = useState<EntryListItem[]>([])
@@ -19,6 +30,8 @@ export default function Vault() {
   const [devices, setDevices] = useState<WebAuthnDevice[]>([])
   const [devicesLoading, setDevicesLoading] = useState(true)
   const [deviceAction, setDeviceAction] = useState<string | null>(null)
+  const [transferBusy, setTransferBusy] = useState(false)
+  const [transferMessage, setTransferMessage] = useState('')
   const nav = useNavigate()
 
   useEffect(() => {
@@ -184,6 +197,69 @@ export default function Vault() {
     nav('/login')
   }
 
+  async function exportVault() {
+    setTransferBusy(true)
+    setTransferMessage('')
+    setError('')
+    try {
+      const password = window.prompt('Defina uma senha de exportação com pelo menos 12 caracteres:')
+      if (password === null) return
+      const confirmation = window.prompt('Digite novamente a senha de exportação:')
+      if (confirmation === null) return
+      if (password !== confirmation) throw new Error('As senhas de exportação não coincidem')
+      if (password.length < 12) throw new Error('A senha de exportação deve ter pelo menos 12 caracteres')
+
+      const summaries = await api.listEntries()
+      const blobs = await Promise.all(summaries.map((entry) => api.getEntry(entry.id)))
+      const serialized = await createEncryptedExport(blobs, password)
+      const blob = new Blob([serialized], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = 'vaultlocal-export-' + new Date().toISOString().slice(0, 10) + '.json'
+      anchor.click()
+      URL.revokeObjectURL(url)
+      setTransferMessage('Exportação cifrada criada. Guarde o arquivo e a senha separadamente.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível exportar o cofre')
+    } finally {
+      setTransferBusy(false)
+    }
+  }
+
+  function importVault() {
+    setTransferMessage('')
+    setError('')
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json,application/json'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      setTransferBusy(true)
+      try {
+        const password = window.prompt('Digite a senha usada para cifrar a exportação:')
+        if (password === null) return
+        const entries = await decryptEncryptedExport(await file.text(), password)
+        const confirmed = window.confirm(
+          'A exportação contém ' + entries.length + ' entrada(s). Elas serão adicionadas ao cofre atual sem substituir as existentes. Continuar?',
+        )
+        if (!confirmed) return
+        for (const entry of entries) {
+          await api.createEntry(await encryptPortableEntry(entry))
+        }
+        await loadAll()
+        setTransferMessage(entries.length + ' entrada(s) importada(s) com nova criptografia.')
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Não foi possível importar a exportação')
+      } finally {
+        setTransferBusy(false)
+      }
+    }
+    input.click()
+  }
+
+
   const allTags = useMemo(() => {
     const set = new Set<string>()
     entries.forEach((e) => {
@@ -216,12 +292,34 @@ export default function Vault() {
           <Link to="/" className="text-lg font-semibold tracking-tight text-stone-900">
             Vault<span className="text-stone-400">Local</span>
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={exportVault}
+              disabled={transferBusy}
+              className="text-xs sm:text-sm text-stone-500 hover:text-stone-900 disabled:opacity-50 transition"
+            >
+              Exportar
+            </button>
+            <button
+              type="button"
+              onClick={importVault}
+              disabled={transferBusy}
+              className="text-xs sm:text-sm text-stone-500 hover:text-stone-900 disabled:opacity-50 transition"
+            >
+              Importar
+            </button>
             <Link
               to="/health"
-              className="text-sm text-stone-500 hover:text-stone-900 transition"
+              className="text-xs sm:text-sm text-stone-500 hover:text-stone-900 transition"
             >
               Saúde
+            </Link>
+            <Link
+              to="/timeline"
+              className="text-xs sm:text-sm text-stone-500 hover:text-stone-900 transition"
+            >
+              Timeline
             </Link>
             <Link
               to="/entry/new"
@@ -240,6 +338,11 @@ export default function Vault() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
+        {transferMessage && (
+          <p className="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2">
+            {transferMessage}
+          </p>
+        )}
         <div className="mb-4 rounded-lg border border-stone-200 bg-white px-4 py-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
@@ -400,6 +503,11 @@ export default function Vault() {
                       {e.site && (
                         <p className="text-xs text-stone-500 truncate mt-0.5">
                           {e.site}
+                        </p>
+                      )}
+                      {expirationLabel(e.expires_at) && (
+                        <p className={"text-[11px] mt-1 " + expirationLabel(e.expires_at)!.className}>
+                          {expirationLabel(e.expires_at)!.text}
                         </p>
                       )}
                     </div>

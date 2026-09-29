@@ -12,6 +12,8 @@ de descriptografia.
 
 Acesso somente via rede local (bind em 127.0.0.1 por padrão).
 
+A implementação atual também inclui TOTP, recovery key, Google OIDC opcional, WebAuthn/passkeys, auto lock, exportação cifrada e Health Dashboard com HIBP online/offline.
+
 ## 2. Objetivos e Não-Objetivos
 
 ### Objetivos
@@ -25,7 +27,7 @@ Acesso somente via rede local (bind em 127.0.0.1 por padrão).
 - Extensão de navegador / autofill.
 - App mobile.
 - Compartilhamento de senhas entre usuários.
-- SSO / OAuth.
+- SSO genérico / integrações OAuth adicionais. Google OIDC opcional é uma implementação vigente da Fase 3.
 - Sync em nuvem (Render) — fase 2, opt-in.
 
 ## 3. Arquitetura
@@ -155,7 +157,8 @@ vault_entries (
   tags          TEXT[] DEFAULT '{}',
   crypto_version SMALLINT NOT NULL DEFAULT 1, -- 1=legacy, 2=AAD
   created_at    TIMESTAMPTZ DEFAULT now(),
-  updated_at    TIMESTAMPTZ DEFAULT now()
+  updated_at    TIMESTAMPTZ DEFAULT now(),
+  expires_at    TIMESTAMPTZ NULL
 )
 
 sessions (

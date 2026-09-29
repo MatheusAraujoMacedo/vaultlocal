@@ -1,10 +1,18 @@
 import { useEffect, useState, FormEvent } from 'react'
+
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import {
   generateDataKey, wrapDataKey, unwrapDataKey, encryptField, decryptField, getSessionKek,
   buildDataKeyAad, buildFieldAad, generateSecurePassword,
 } from '../crypto'
+
+function toDateTimeLocal(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 16)
+}
 
 export default function EntryForm() {
   const { id } = useParams<{ id: string }>()
@@ -19,6 +27,7 @@ export default function EntryForm() {
   const [password, setPassword] = useState('')
   const [notes, setNotes] = useState('')
   const [tags, setTags] = useState('')
+  const [expiresAt, setExpiresAt] = useState('')
   const [error, setError] = useState('')
   const [loadError, setLoadError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -60,6 +69,7 @@ export default function EntryForm() {
             : '',
         )
         setTags(e.tags)
+        setExpiresAt(e.expires_at ? toDateTimeLocal(e.expires_at) : '')
       } catch (err: any) {
         setLoadError(err.message)
       }
@@ -96,6 +106,7 @@ export default function EntryForm() {
         wrapped_data_key: wrapped.wrapped_data_key,
         wrapped_nonce: wrapped.wrapped_nonce,
         tags,
+        expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
       }
       if (isEdit) {
         await api.updateEntry(id!, data)
@@ -220,6 +231,22 @@ export default function EntryForm() {
             rows={3}
             className="w-full px-3 py-2 rounded-md border border-stone-300 bg-white focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-stone-700 mb-1.5">
+            Expiração <span className="text-stone-400 font-normal">(opcional)</span>
+          </label>
+          <input
+            type="datetime-local"
+            value={expiresAt}
+            min={toDateTimeLocal(new Date().toISOString())}
+            onChange={(e) => setExpiresAt(e.target.value)}
+            className="w-full px-3 py-2 rounded-md border border-stone-300 bg-white focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition"
+          />
+          <p className="text-xs text-stone-400 mt-1.5">
+            O lembrete é um metadado do cofre; nenhuma senha é armazenada em claro.
+          </p>
         </div>
 
         <div>

@@ -100,6 +100,41 @@ async def test_post_report_tracks_breach_count_and_score(client, register_and_lo
     assert body["score"] == 55
 
 
+async def test_get_timeline_returns_security_events(client, register_and_login):
+    headers = await _auth_headers(register_and_login, "health-timeline@test.com")
+
+    await client.post(
+        "/api/v1/health/report",
+        headers=headers,
+        json={"total_entries": 1, "weak_count": 0, "reused_count": 0, "old_count": 0},
+    )
+    response = await client.get("/api/v1/health/timeline", headers=headers)
+    assert response.status_code == 200
+    event_types = [event["event_type"] for event in response.json()["events"]]
+    assert event_types[0] == "health_scan"
+    assert "login_success" in event_types
+    assert "created_at" in response.json()["events"][0]
+
+
+async def test_get_timeline_is_scoped_and_requires_auth(client, register_and_login):
+    headers_a = await _auth_headers(register_and_login, "timeline-a@test.com")
+    headers_b = await _auth_headers(register_and_login, "timeline-b@test.com")
+
+    await client.get("/api/v1/health/timeline", headers=headers_b)
+    await client.post(
+        "/api/v1/health/report",
+        headers=headers_a,
+        json={"total_entries": 1, "weak_count": 0, "reused_count": 0, "old_count": 0},
+    )
+
+    events_b = await client.get("/api/v1/health/timeline", headers=headers_b)
+    assert events_b.status_code == 200
+    assert all(event["event_type"] != "health_scan" for event in events_b.json()["events"])
+
+    unauthenticated = await client.get("/api/v1/health/timeline")
+    assert unauthenticated.status_code in (401, 403)
+
+
 async def test_get_latest_returns_404_when_none(client, register_and_login):
     headers = await _auth_headers(register_and_login, "health3@test.com")
     resp = await client.get("/api/v1/health/latest", headers=headers)

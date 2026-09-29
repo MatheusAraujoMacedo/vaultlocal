@@ -7,6 +7,7 @@ _tmp_dir = tempfile.mkdtemp(prefix="vaultlocal_test_")
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_tmp_dir}/test.db"
 os.environ["JWT_SECRET"] = "test-secret-not-for-prod-0123456789ab"
 os.environ["TOTP_ENCRYPTION_KEY"] = "a" * 64
+os.environ["ALLOWED_HOSTS"] = "test,localhost,127.0.0.1"
 
 import pyotp
 import pytest

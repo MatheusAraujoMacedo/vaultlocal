@@ -3,15 +3,16 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
+from ..core.audit import record_security_event
 from ..deps import get_current_user, get_db
-from ..models import HealthReport, User
-from ..schemas import HealthReportIn, HealthReportOut
+from ..models import HealthReport, SecurityEvent, User
+from ..schemas import HealthReportIn, HealthReportOut, SecurityEventOut, SecurityTimelineOut
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -94,6 +95,7 @@ async def upsert_report(
         existing.old_count = body.old_count
         existing.breached_count = body.breached_count
         existing.updated_at = now
+        await record_security_event(db, user.id, "health_scan")
         await db.commit()
         await db.refresh(existing)
         return _to_out(existing)
@@ -106,9 +108,30 @@ async def upsert_report(
         breached_count=body.breached_count,
     )
     db.add(report)
+    await record_security_event(db, user.id, "health_scan")
     await db.commit()
     await db.refresh(report)
     return _to_out(report)
+
+
+@router.get("/timeline", response_model=SecurityTimelineOut)
+async def security_timeline(
+    limit: int = Query(default=100, ge=1, le=100),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = await db.scalars(
+        select(SecurityEvent)
+        .where(SecurityEvent.user_id == user.id)
+        .order_by(SecurityEvent.created_at.desc())
+        .limit(limit)
+    )
+    return SecurityTimelineOut(
+        events=[
+            SecurityEventOut(event_type=row.event_type, created_at=row.created_at.isoformat())
+            for row in rows
+        ]
+    )
 
 
 @router.get("/latest", response_model=HealthReportOut)

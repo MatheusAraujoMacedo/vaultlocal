@@ -19,6 +19,8 @@ services:
       ENVIRONMENT: production
       DATABASE_URL: postgresql://vault:${DB_PASSWORD:?DB_PASSWORD must be set in .env}@db:5432/vaultdb
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
       TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:?TOTP_ENCRYPTION_KEY must be set in .env}
       RESET_DELIVERY: ${RESET_DELIVERY:-local}
       RESET_URL_BASE: ${RESET_URL_BASE:-http://127.0.0.1:8080/forgot-password}

@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from webauthn import verify_authentication_response, verify_registration_response
 
 from ..config import settings
+from ..core.audit import record_security_event
 from ..core.limiter import limiter
 from ..core.security import (
     DUMMY_AUTH_HASH,
@@ -232,7 +233,9 @@ async def login(request: Request, body: LoginIn, db: AsyncSession = Depends(get_
     )
 
 
-async def _issue_session_tokens(db: AsyncSession, user_id: str) -> TokenOut:
+async def _issue_session_tokens(
+    db: AsyncSession, user_id: str, event_type: str | None = 'login_success'
+) -> TokenOut:
     # Cleanup expired sessions for this user
     expired_sessions = list(await db.scalars(
         select(Session).where(Session.user_id == user_id, Session.expires_at < datetime.now(timezone.utc))
@@ -249,6 +252,8 @@ async def _issue_session_tokens(db: AsyncSession, user_id: str) -> TokenOut:
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
     )
     db.add(session)
+    if event_type:
+        await record_security_event(db, user_id, event_type)
     access = create_access_token(user_id, session_id)
     await db.commit()
     return TokenOut(access_token=access, refresh_token=refresh)
@@ -678,8 +683,9 @@ async def recovery_recover(
     sessions = list(await db.scalars(select(Session).where(Session.user_id == user.id)))
     for session in sessions:
         await db.delete(session)
+    await record_security_event(db, user.id, "recovery_used")
     await db.commit()
-    return await _issue_session_tokens(db, user.id)
+    return await _issue_session_tokens(db, user.id, event_type=None)
 
 
 def _reset_token_valid(row: PasswordResetToken | None) -> bool:
@@ -874,6 +880,7 @@ async def totp_confirm(
     user.totp_failed_attempts = 0
     user.totp_locked_until = None
     user.mfa_configured = True
+    await record_security_event(db, user.id, "mfa_enabled")
     await db.commit()
     return await _issue_session_tokens(db, user.id)
 
@@ -939,7 +946,9 @@ async def refresh(request: Request, body: RefreshIn, db: AsyncSession = Depends(
 
 
 @router.post("/change-password", response_model=TokenOut)
+@limiter.limit("5/minute")
 async def change_password(
+    request: Request,
     body: ChangePasswordIn,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -964,6 +973,7 @@ async def change_password(
     user.auth_hash = hash_password(body.new_auth_key)
     user.salt_auth = new_salt_auth
     user.salt_crypto = new_salt_crypto
+    await record_security_event(db, user.id, "password_changed")
 
     old_sessions = list(await db.scalars(select(Session).where(Session.user_id == user.id)))
     for s in old_sessions:
@@ -993,6 +1003,7 @@ async def logout(body: RefreshIn, db: AsyncSession = Depends(get_db)):
     for s in sessions:
         if verify_password(body.refresh_token, s.refresh_hash):
             await db.delete(s)
+            await record_security_event(db, user_id, 'logout')
     await db.commit()
     return {"ok": True}
 
@@ -1165,6 +1176,7 @@ async def webauthn_register_envelope(
         raise HTTPException(404, "WebAuthn credential not found")
     credential.encrypted_kek = body.encrypted_kek
     credential.kek_nonce = body.kek_nonce
+    await record_security_event(db, user.id, "passkey_added")
     await db.commit()
 
 
@@ -1219,6 +1231,7 @@ async def webauthn_device_rename(
     credential.name = body.name.strip()
     if not credential.name:
         raise HTTPException(400, "device name cannot be empty")
+    await record_security_event(db, user.id, "passkey_renamed")
     await db.commit()
     return WebAuthnDeviceOut(
         credential_id=credential.credential_id,
@@ -1256,6 +1269,7 @@ async def webauthn_device_revoke(
     if not credential:
         raise HTTPException(404, "trusted device not found")
     await db.delete(credential)
+    await record_security_event(db, user.id, "passkey_revoked")
     await db.commit()
 
 

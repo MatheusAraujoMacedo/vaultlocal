@@ -17,7 +17,7 @@ script-src 'self' 'wasm-unsafe-eval';
 style-src 'self' 'unsafe-inline';
 img-src 'self' data:;
 font-src 'self';
-connect-src 'self';
+connect-src 'self' https://api.pwnedpasswords.com;
 base-uri 'none';
 object-src 'none';
 form-action 'self';
@@ -35,7 +35,7 @@ Definida em `frontend/nginx.conf` via `add_header Content-Security-Policy`.
 | `style-src` | `'self' 'unsafe-inline'` | Tailwind aplica styles inline via `style="..."` em alguns componentes. Ideal: migrar para nonce/hash; mantido inline por simplicidade no MVP. |
 | `img-src` | `'self' data:` | `data:` necessário para o QR code do TOTP gerado por `qrcode.toDataURL()`. |
 | `font-src` | `'self'` | O frontend não depende mais de fontes externas. |
-| `connect-src` | `'self'` | Apenas chamadas same-origin (`/api/*` no `nginx.conf`). Nenhuma telemetria externa. |
+| `connect-src` | `'self' https://api.pwnedpasswords.com` | API local e consulta opcional ao HIBP online; o navegador envia apenas o prefixo de 5 caracteres. |
 | `base-uri` | `'none'` | Impede alteração da base URL por HTML injetado. |
 | `object-src` | `'none'` | Desativa plugins/objetos que o cofre não precisa. |
 | `form-action` | `'self'` | Restringe destinos de submissão de formulários. |

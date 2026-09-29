@@ -10,6 +10,7 @@ export interface EntryForAnalysis {
   id: string;
   password: string;
   updatedAt: string; // ISO 8601 date string
+  expiresAt?: string | null; // optional expiration metadata
 }
 
 export interface HealthRule {
@@ -105,4 +106,35 @@ export const OldRule: HealthRule & { apply(entries: EntryForAnalysis[]): EntryIs
   },
 };
 
-export const defaultRules: HealthRule[] = [WeakRule, ReuseRule, OldRule];
+export const ExpirationRule: HealthRule & { apply(entries: EntryForAnalysis[]): EntryIssue[] } = {
+  id: 'expiring-secret',
+  apply(entries: EntryForAnalysis[]): EntryIssue[] {
+    const issues: EntryIssue[] = [];
+    const now = Date.now();
+    const SOON_MS = 30 * 24 * 60 * 60 * 1000;
+    for (const entry of entries) {
+      if (!entry.expiresAt) continue;
+      const expires = new Date(entry.expiresAt).getTime();
+      if (Number.isNaN(expires)) continue;
+      if (expires <= now) {
+        issues.push({
+          ruleId: ExpirationRule.id,
+          entryId: entry.id,
+          severity: 'critical',
+          message: 'Credencial expirada; considere gerar uma nova senha',
+        });
+      } else if (expires - now <= SOON_MS) {
+        const days = Math.max(1, Math.ceil((expires - now) / (24 * 60 * 60 * 1000)));
+        issues.push({
+          ruleId: ExpirationRule.id,
+          entryId: entry.id,
+          severity: 'warning',
+          message: 'Credencial expira em ' + days + ' dia(s)',
+        });
+      }
+    }
+    return issues;
+  },
+};
+
+export const defaultRules: HealthRule[] = [WeakRule, ReuseRule, OldRule, ExpirationRule];

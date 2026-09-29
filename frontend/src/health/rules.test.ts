@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { WeakRule, ReuseRule, OldRule, type EntryForAnalysis } from './rules';
+import { WeakRule, ReuseRule, OldRule, ExpirationRule, type EntryForAnalysis } from './rules';
 import { analyze } from './engine';
 
 const nowIso = new Date().toISOString();
@@ -90,6 +90,30 @@ describe('OldRule', () => {
   it('does not flag recent entries', () => {
     const recent = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000).toISOString();
     const issues = OldRule.apply([entry('a', 'Whatever$1!pass', recent)]);
+    expect(issues).toHaveLength(0);
+  });
+});
+
+
+describe('ExpirationRule', () => {
+  it('flags an expired credential as critical', () => {
+    const expiresAt = new Date(Date.now() - 60_000).toISOString();
+    const issues = ExpirationRule.apply([{ ...entry('expired', 'Fine$Trong!99zz'), expiresAt }]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].severity).toBe('critical');
+    expect(issues[0].message).toContain('expirada');
+  });
+
+  it('flags credentials expiring within 30 days as warning', () => {
+    const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+    const issues = ExpirationRule.apply([{ ...entry('soon', 'Fine$Trong!99zz'), expiresAt }]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].severity).toBe('warning');
+    expect(issues[0].message).toContain('3 dia');
+  });
+
+  it('ignores credentials without expiration metadata', () => {
+    const issues = ExpirationRule.apply([entry('none', 'Fine$Trong!99zz')]);
     expect(issues).toHaveLength(0);
   });
 });

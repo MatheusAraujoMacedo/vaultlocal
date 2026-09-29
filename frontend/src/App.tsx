@@ -6,6 +6,9 @@ import Vault from './pages/Vault'
 import EntryDetail from './pages/EntryDetail'
 import EntryForm from './pages/EntryForm'
 import Health from './pages/Health'
+import Timeline from './pages/Timeline'
+import { api } from './api'
+import { createAutoLock } from './security/autoLock'
 import { useEffect, useState } from 'react'
 
 export default function App() {
@@ -24,6 +27,16 @@ export default function App() {
       setAuthed(false)
     }
   }, [])
+
+  useEffect(() => {
+    if (authed !== true) return
+    const lock = createAutoLock(() => {
+      api.logout()
+      setAuthed(false)
+    })
+    lock.start()
+    return () => lock.stop()
+  }, [authed])
 
   if (authed === null) return null
 
@@ -51,6 +64,10 @@ export default function App() {
       <Route
         path="/health"
         element={authed ? <Health /> : <Navigate to="/login" replace />}
+      />
+      <Route
+        path="/timeline"
+        element={authed ? <Timeline /> : <Navigate to="/login" replace />}
       />
     </Routes>
   )

@@ -38,7 +38,7 @@ export default function Health() {
   const [error, setError] = useState('')
   const [score, setScore] = useState(0)
   const [delta, setDelta] = useState<number | null>(null)
-  const [counts, setCounts] = useState({ weak: 0, reused: 0, old: 0 })
+  const [counts, setCounts] = useState({ weak: 0, reused: 0, old: 0, expiring: 0 })
   const [issues, setIssues] = useState<IssueView[]>([])
   const [analysisEntries, setAnalysisEntries] = useState<EntryForAnalysis[]>([])
   const [entryTitles, setEntryTitles] = useState<Record<string, string>>({})
@@ -75,7 +75,7 @@ export default function Health() {
               key,
               b.crypto_version === 2 ? buildFieldAad(b.id, b.title, b.site, 'password') : undefined,
             )
-            return { id: b.id, password, updatedAt: b.updated_at }
+            return { id: b.id, password, updatedAt: b.updated_at, expiresAt: b.expires_at }
           }),
         )
 
@@ -110,7 +110,14 @@ export default function Health() {
         localStorage.setItem(LS_KEY, JSON.stringify({ score: newScore, at: new Date().toISOString() }))
 
         setScore(newScore)
-        setCounts({ weak: report.weakCount, reused: report.reusedCount, old: report.oldCount })
+        setCounts({
+          weak: report.weakCount,
+          reused: report.reusedCount,
+          old: report.oldCount,
+          expiring: report.entries.filter((item) =>
+            item.issues.some((issue) => issue.ruleId === 'expiring-secret'),
+          ).length,
+        })
         setBreachedCount(lastBreachedCount)
         setAnalysisEntries(forAnalysis)
 
@@ -273,7 +280,7 @@ export default function Health() {
         </div>
       </header>
 
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-8">
         <button
           type="button"
           onClick={() => setFilterRule(filterRule === 'weak-password' ? null : 'weak-password')}
@@ -314,6 +321,21 @@ export default function Health() {
           <p className="text-sm text-stone-500">Senhas antigas</p>
           <p className="mt-1 text-2xl font-semibold text-stone-900 tabular-nums">
             {counts.old}
+          </p>
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilterRule(filterRule === 'expiring-secret' ? null : 'expiring-secret')}
+          className={
+            'border rounded-lg p-4 text-left transition ' +
+            (filterRule === 'expiring-secret'
+              ? 'border-stone-900 bg-stone-50 ring-2 ring-stone-900'
+              : 'border-stone-200 bg-white hover:border-stone-300')
+          }
+        >
+          <p className="text-sm text-stone-500">Expirações</p>
+          <p className="mt-1 text-2xl font-semibold text-stone-900 tabular-nums">
+            {counts.expiring}
           </p>
         </button>
         <button

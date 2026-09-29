@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.audit import record_security_event
 from ..deps import get_current_user, get_db
 from ..models import User, VaultEntry
 from ..schemas import EntryIn, EntryListItem, EntryOut
@@ -17,6 +18,7 @@ def _to_out(e: VaultEntry) -> EntryOut:
         crypto_version=e.crypto_version,
         title=e.title,
         site=e.site,
+        expires_at=e.expires_at,
         username_enc=e.username_enc,
         nonce_username=e.nonce_username,
         password_enc=e.password_enc,
@@ -41,8 +43,13 @@ async def list_entries(
     )
     return [
         EntryListItem(
-            id=e.id, title=e.title, site=e.site, tags=e.tags or "",
-            created_at=e.created_at.isoformat(), updated_at=e.updated_at.isoformat(),
+            id=e.id,
+            title=e.title,
+            site=e.site,
+            tags=e.tags or "",
+            expires_at=e.expires_at.isoformat() if e.expires_at else None,
+            created_at=e.created_at.isoformat(),
+            updated_at=e.updated_at.isoformat(),
         )
         for e in rows
     ]
@@ -63,8 +70,13 @@ async def search_entries(
     )
     return [
         EntryListItem(
-            id=e.id, title=e.title, site=e.site, tags=e.tags or "",
-            created_at=e.created_at.isoformat(), updated_at=e.updated_at.isoformat(),
+            id=e.id,
+            title=e.title,
+            site=e.site,
+            tags=e.tags or "",
+            expires_at=e.expires_at.isoformat() if e.expires_at else None,
+            created_at=e.created_at.isoformat(),
+            updated_at=e.updated_at.isoformat(),
         )
         for e in rows
     ]
@@ -85,6 +97,7 @@ async def create_entry(
         crypto_version=2,
         title=body.title,
         site=body.site,
+        expires_at=body.expires_at,
         username_enc=body.username_enc,
         nonce_username=body.nonce_username,
         password_enc=body.password_enc,
@@ -96,6 +109,7 @@ async def create_entry(
         tags=body.tags,
     )
     db.add(entry)
+    await record_security_event(db, user.id, "entry_created")
     await db.commit()
     await db.refresh(entry)
     return _to_out(entry)
@@ -128,6 +142,7 @@ async def update_entry(
     e.crypto_version = 2
     e.title = body.title
     e.site = body.site
+    e.expires_at = body.expires_at
     e.username_enc = body.username_enc
     e.nonce_username = body.nonce_username
     e.password_enc = body.password_enc
@@ -138,6 +153,7 @@ async def update_entry(
     e.wrapped_nonce = body.wrapped_nonce
     e.tags = body.tags
     e.updated_at = datetime.now(timezone.utc)
+    await record_security_event(db, user.id, "entry_updated")
     await db.commit()
     await db.refresh(e)
     return _to_out(e)
@@ -153,4 +169,5 @@ async def delete_entry(
     if not e or e.user_id != user.id:
         raise HTTPException(404, "not found")
     await db.delete(e)
+    await record_security_event(db, user.id, "entry_deleted")
     await db.commit()
