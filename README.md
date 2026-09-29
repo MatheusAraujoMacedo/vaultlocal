@@ -101,22 +101,12 @@ A branch `main` recebe uma suíte de CI que valida três áreas: backend, fronte
 
 O projeto segue um modelo **local-first / zero-knowledge**: recursos online são opcionais quando explicitamente configurados, enquanto o Health Dashboard pode usar o corpus HIBP local sem enviar o hash completo da senha ao serviço externo.
 
-## Roadmap (RFC ativa)
+## Roadmap
 
-Fases documentadas em `docs/superpowers/specs/2026-09-23-forgot-password-rfc.md`.
-
-Pontos de retomada:
-- `docs/superpowers/plans/2026-09-28-vaultlocal-phase4-handoff.md` — handoff das Phases 1–4.2.
-- `docs/superpowers/plans/2026-09-28-phase5-breach-check.md` — implementação e próximos passos da Phase 5.
-
-| Fase | Entrega | Status |
-|---|---|---|
-| 1 | MFA local (TOTP) | ✅ implementado |
-| 2 | Recovery key + reset destrutivo com token | ✅ implementado |
-| 3 | Google OIDC como identidade (opcional) | ✅ implementado — E2E validado |
-| 4 | WebAuthn / passkey para acesso rápido | ✅ 4.1 E2E browser validado; 4.2 implementado |
-| 5 | Breach check | ✅ HIBP online k-anonymity + ✅ adapter para índice local + ✅ corpus local validado |
-| 6 | Hardening e portabilidade local | ✅ Auto Lock + ✅ exportação/importação cifrada + ✅ Security Timeline + ✅ hardening HTTP/CSP |
+O produto segue em **desenvolvimento contínuo**. Funcionalidades futuras, decisões
+de produto e detalhes de implementação são mantidos fora da documentação pública
+detalhada. O foco atual é evolução incremental, validação de segurança, qualidade
+de código e melhoria da experiência local-first.
 
 ## Dev local (sem Docker)
 
@@ -192,7 +182,6 @@ vaultlocal/
 ├── SPEC.md                 # arquitetura formal
 └── docs/
     ├── features/           # RFCs por feature (health-dashboard, ...)
-    ├── superpowers/        # specs e plans de alto nível
     └── deployment/         # CSP, hardening, deploy
 ```
 
@@ -215,7 +204,7 @@ vaultlocal/
 8. **`.env` gitignored** desde o commit 1.
 
 Para a discussão completa de ameaças, mitigações e trade-offs: `SPEC.md §9`,
-`docs/deployment/csp.md`, `docs/superpowers/specs/2026-09-23-forgot-password-rfc.md`.
+Para a discussão de ameaças e hardening: docs/deployment/csp.md e docs/deployment/hardening.md.
 
 ## Licença
 

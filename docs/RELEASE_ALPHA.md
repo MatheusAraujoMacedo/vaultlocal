@@ -5,7 +5,9 @@
 Esta release demonstra a arquitetura local-first/zero-knowledge e reúne os
 fluxos de autenticação, proteção do cofre, análise de segurança e recuperação.
 
-## Checklist funcional
+## Estado atual
+
+### Implementado
 
 - [x] TOTP + lockout progressivo
 - [x] Recovery Key + prova ECDSA
@@ -20,12 +22,18 @@ fluxos de autenticação, proteção do cofre, análise de segurança e recupera
 - [x] Adapter para HIBP offline
 - [x] Corpus HIBP completo importado e E2E local validado
 
-### Validação do corpus HIBP local
+### Em desenvolvimento
 
-O corpus SHA-1 local foi validado com 1.048.576 ranges e um fixture conhecido (`password`).
-Use `make hibp-validate-local` para repetir a validação. Se o arquivo `sha1.index` for perdido, `make hibp-index-rebuild-local` pode reconstruir um índice local de prontidão após confirmar que todos os ranges estão presentes. Esse índice usa marcadores `LOCAL`; ele não representa ETags HTTP do downloader oficial.
+As próximas evoluções do produto estão em desenvolvimento contínuo. O roadmap
+público permanece intencionalmente de alto nível para preservar decisões de
+produto e detalhes de implementação.
 
-## Checklist técnico
+## Validação do corpus HIBP local
+
+O corpus SHA-1 local foi validado com 1.048.576 ranges e um fixture conhecido
+(password). Use make hibp-validate-local para repetir a validação.
+
+## Qualidade técnica
 
 - [x] 119 testes backend
 - [x] 43 testes frontend

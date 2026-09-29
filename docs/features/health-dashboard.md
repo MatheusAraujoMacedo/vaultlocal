@@ -207,7 +207,7 @@ score = clamp(
 
 ## 9. Modo offline local
 
-A Phase 5.2 usa o downloader oficial do HIBP no formato de diretório. O downloader
+A integração com o corpus local usa o downloader oficial do HIBP no formato de diretório. O downloader
 gera os ranges SHA-1 individualmente e mantém `sha1.index` com os ETags para
 permitir atualizações incrementais sem baixar novamente ranges inalterados.
 
