@@ -418,6 +418,8 @@ class EntryIn(BaseModel):
     nonce_password: str
     password_history_enc: str | None = None
     nonce_password_history: str | None = None
+    custom_fields_enc: str | None = None
+    nonce_custom_fields: str | None = None
     notes_enc: str | None = None
     nonce_notes: str | None = None
     wrapped_data_key: str
@@ -435,6 +437,13 @@ class EntryIn(BaseModel):
         if v is None:
             return v
         return _b64_len(v, 12, "nonce_password_history")
+
+    @field_validator("nonce_custom_fields")
+    @classmethod
+    def _validate_nonce_custom_fields(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return _b64_len(v, 12, "nonce_custom_fields")
 
     @field_validator("nonce_notes")
     @classmethod
@@ -454,6 +463,13 @@ class EntryIn(BaseModel):
         if v is None:
             return v
         return _b64_any_len(v, "password_history_enc")
+
+    @field_validator("custom_fields_enc")
+    @classmethod
+    def _validate_custom_fields_enc(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return _b64_any_len(v, "custom_fields_enc")
 
     @field_validator("notes_enc")
     @classmethod
@@ -478,6 +494,8 @@ class EntryIn(BaseModel):
             raise ValueError("notes_enc and nonce_notes must both be set or both be None")
         if (self.password_history_enc is None) != (self.nonce_password_history is None):
             raise ValueError("password_history_enc and nonce_password_history must both be set or both be None")
+        if (self.custom_fields_enc is None) != (self.nonce_custom_fields is None):
+            raise ValueError("custom_fields_enc and nonce_custom_fields must both be set or both be None")
         return self
 
 
@@ -494,6 +512,8 @@ class EntryOut(BaseModel):
     nonce_password: str
     password_history_enc: str | None
     nonce_password_history: str | None
+    custom_fields_enc: str | None
+    nonce_custom_fields: str | None
     notes_enc: str | None
     nonce_notes: str | None
     wrapped_data_key: str

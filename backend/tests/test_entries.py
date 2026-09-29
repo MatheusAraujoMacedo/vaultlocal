@@ -58,6 +58,16 @@ async def test_create_entry_rejects_partial_password_history(client, register_an
     assert resp.status_code == 422
 
 
+async def test_create_entry_rejects_partial_custom_fields(client, register_and_login):
+    headers = await _auth_headers(register_and_login, "custom-fields-pair@test.com")
+    resp = await client.post(
+        "/api/v1/entries",
+        headers=headers,
+        json=_entry_payload(custom_fields_enc=ENC_NOTES, nonce_custom_fields=None),
+    )
+    assert resp.status_code == 422
+
+
 async def test_create_entry_without_notes(client, register_and_login):
     headers = await _auth_headers(register_and_login, "noNotes@test.com")
     resp = await client.post(

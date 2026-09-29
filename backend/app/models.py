@@ -96,11 +96,13 @@ class VaultEntry(Base):
     username_enc: Mapped[str] = mapped_column(Text)
     password_enc: Mapped[str] = mapped_column(Text)
     password_history_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    custom_fields_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     nonce_username: Mapped[str] = mapped_column(String(64))
     nonce_password: Mapped[str] = mapped_column(String(64))
     nonce_password_history: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    nonce_custom_fields: Mapped[str | None] = mapped_column(String(64), nullable=True)
     nonce_notes: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     tags: Mapped[str] = mapped_column(String(512), default="")  # comma separated for sqlite compat

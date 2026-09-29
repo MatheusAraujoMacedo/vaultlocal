@@ -20,6 +20,11 @@ const MAX_EXPORT_BYTES = 50 * 1024 * 1024
 const MAX_ENTRIES = 10_000
 const MAX_FIELD_CHARS = 1_000_000
 
+interface CustomField {
+  name: string
+  value: string
+}
+
 interface PasswordHistoryItem {
   password: string
   changed_at: string
@@ -35,6 +40,7 @@ interface PortableEntry {
   expires_at: string | null
   favorite: boolean
   password_history: PasswordHistoryItem[]
+  custom_fields: CustomField[]
 }
 
 interface ExportEnvelope {
@@ -79,6 +85,7 @@ function validatePortableEntry(entry: unknown): PortableEntry {
   const tags = value.tags
   const favorite = value.favorite ?? false
   const passwordHistory = value.password_history ?? []
+  const customFields = value.custom_fields ?? []
   const expiresAt = value.expires_at ?? null
 
   if (typeof title !== 'string' || title.length < 1 || title.length > 255) {
@@ -104,11 +111,16 @@ function validatePortableEntry(entry: unknown): PortableEntry {
     typeof (item as PasswordHistoryItem).changed_at !== 'string' ||
     Number.isNaN(new Date((item as PasswordHistoryItem).changed_at).getTime())
   )) throw new Error('Histórico de senhas inválido no arquivo de exportação')
+  if (!Array.isArray(customFields) || customFields.length > 10 || customFields.some((item) =>
+    !item || typeof item !== 'object' || typeof (item as CustomField).name !== 'string' ||
+    typeof (item as CustomField).value !== 'string' ||
+    (item as CustomField).name.length > 100 || (item as CustomField).value.length > 1000
+  )) throw new Error('Campos personalizados inválidos no arquivo de exportação')
   if (expiresAt !== null && (typeof expiresAt !== 'string' || Number.isNaN(new Date(expiresAt).getTime()))) {
     throw new Error('Data de expiração inválida no arquivo de exportação')
   }
 
-  return { title, site: site as string | null, username, password, notes: notes as string | null, tags, expires_at: expiresAt as string | null, favorite, password_history: passwordHistory as PasswordHistoryItem[] }
+  return { title, site: site as string | null, username, password, notes: notes as string | null, tags, expires_at: expiresAt as string | null, favorite, password_history: passwordHistory as PasswordHistoryItem[], custom_fields: customFields as CustomField[] }
 }
 
 async function deriveExportKey(password: string, salt: string): Promise<CryptoKey> {
@@ -136,6 +148,21 @@ async function decryptEntry(entry: EntryBlob, kek: CryptoKey): Promise<PortableE
       ? buildFieldAad(entry.id, entry.title, entry.site, 'password')
       : undefined,
   )
+  const customFieldsCiphertext = entry.custom_fields_enc
+    ? await decryptField(
+        { ciphertext: entry.custom_fields_enc, nonce: entry.nonce_custom_fields! },
+        key,
+        entry.crypto_version === 2
+          ? buildFieldAad(entry.id, entry.title, entry.site, 'custom_fields')
+          : undefined,
+      )
+    : null
+  let customFields: CustomField[] = []
+  if (customFieldsCiphertext) {
+    const parsed = JSON.parse(customFieldsCiphertext) as unknown
+    if (!Array.isArray(parsed)) throw new Error('Campos personalizados inválidos')
+    customFields = parsed.slice(0, 10) as CustomField[]
+  }
   const historyCiphertext = entry.password_history_enc
     ? await decryptField(
         { ciphertext: entry.password_history_enc, nonce: entry.nonce_password_history! },
@@ -171,6 +198,7 @@ async function decryptEntry(entry: EntryBlob, kek: CryptoKey): Promise<PortableE
     expires_at: entry.expires_at,
     favorite: entry.favorite,
     password_history: passwordHistory,
+    custom_fields: customFields,
   }
 }
 
@@ -310,6 +338,8 @@ export async function encryptPortableEntry(entry: PortableEntry): Promise<{
   favorite: boolean
   password_history_enc: string | null
   nonce_password_history: string | null
+  custom_fields_enc: string | null
+  nonce_custom_fields: string | null
 }> {
   const kek = getSessionKek()
   const id = crypto.randomUUID()
@@ -325,6 +355,9 @@ export async function encryptPortableEntry(entry: PortableEntry): Promise<{
     dataKey,
     buildFieldAad(id, entry.title, entry.site, 'password'),
   )
+  const customFields = entry.custom_fields.length
+    ? await encryptField(JSON.stringify(entry.custom_fields.slice(0, 10)), dataKey, buildFieldAad(id, entry.title, entry.site, 'custom_fields'))
+    : null
   const history = entry.password_history.length
     ? await encryptField(
         JSON.stringify(entry.password_history.slice(0, 5)),
@@ -358,6 +391,8 @@ export async function encryptPortableEntry(entry: PortableEntry): Promise<{
     favorite: entry.favorite,
     password_history_enc: history?.ciphertext ?? null,
     nonce_password_history: history?.nonce ?? null,
+    custom_fields_enc: customFields?.ciphertext ?? null,
+    nonce_custom_fields: customFields?.nonce ?? null,
   }
 }
 

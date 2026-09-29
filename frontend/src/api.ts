@@ -84,6 +84,8 @@ export interface EntryBlob extends EntryListItem {
   nonce_password: string
   password_history_enc: string | null
   nonce_password_history: string | null
+  custom_fields_enc: string | null
+  nonce_custom_fields: string | null
   notes_enc: string | null
   nonce_notes: string | null
   wrapped_data_key: string

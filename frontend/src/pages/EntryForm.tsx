@@ -7,6 +7,11 @@ import {
   buildDataKeyAad, buildFieldAad, generateSecurePassword,
 } from '../crypto'
 
+interface CustomField {
+  name: string
+  value: string
+}
+
 interface PasswordHistoryItem {
   password: string
   changed_at: string
@@ -36,6 +41,7 @@ export default function EntryForm() {
   const [favorite, setFavorite] = useState(false)
   const [originalPassword, setOriginalPassword] = useState('')
   const [passwordHistory, setPasswordHistory] = useState<PasswordHistoryItem[]>([])
+  const [customFields, setCustomFields] = useState<CustomField[]>([])
   const [error, setError] = useState('')
   const [loadError, setLoadError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -67,6 +73,25 @@ export default function EntryForm() {
           key,
           e.crypto_version === 2 ? buildFieldAad(e.id, e.title, e.site, 'password') : undefined,
         )
+        if (e.custom_fields_enc) {
+          const customFieldsJson = await decryptField(
+            { ciphertext: e.custom_fields_enc, nonce: e.nonce_custom_fields! },
+            key,
+            e.crypto_version === 2 ? buildFieldAad(e.id, e.title, e.site, 'custom_fields') : undefined,
+          )
+          try {
+            const parsed = JSON.parse(customFieldsJson) as unknown
+            if (Array.isArray(parsed)) {
+              setCustomFields(parsed.filter((item): item is CustomField =>
+                !!item && typeof item === 'object' &&
+                typeof (item as CustomField).name === 'string' &&
+                typeof (item as CustomField).value === 'string',
+              ).slice(0, 10))
+            }
+          } catch {
+            setCustomFields([])
+          }
+        }
         setPassword(decryptedPassword)
         setOriginalPassword(decryptedPassword)
         if (e.password_history_enc) {
@@ -128,6 +153,13 @@ export default function EntryForm() {
         ? await encryptField(JSON.stringify(nextHistory), key, buildFieldAad(entryId, title, storedSite, 'password_history'))
         : null
 
+      const customFieldsPayload = customFields
+        .filter((field) => field.name.trim() || field.value)
+        .slice(0, 10)
+      const customFieldsCipher = customFieldsPayload.length
+        ? await encryptField(JSON.stringify(customFieldsPayload), key, buildFieldAad(entryId, title, storedSite, 'custom_fields'))
+        : null
+
       const data = {
         id: entryId,
         crypto_version: 2 as const,
@@ -139,6 +171,8 @@ export default function EntryForm() {
         nonce_password: p.nonce,
         password_history_enc: history ? history.ciphertext : null,
         nonce_password_history: history ? history.nonce : null,
+        custom_fields_enc: customFieldsCipher ? customFieldsCipher.ciphertext : null,
+        nonce_custom_fields: customFieldsCipher ? customFieldsCipher.nonce : null,
         notes_enc: n ? n.ciphertext : null,
         nonce_notes: n ? n.nonce : null,
         wrapped_data_key: wrapped.wrapped_data_key,
@@ -270,6 +304,53 @@ export default function EntryForm() {
             rows={3}
             className="w-full px-3 py-2 rounded-md border border-stone-300 bg-white focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition"
           />
+        </div>
+
+        <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-stone-700">Campos personalizados</p>
+              <p className="text-xs text-stone-400 mt-0.5">Nome e valor ficam cifrados no navegador.</p>
+            </div>
+            <button
+              type="button"
+              disabled={customFields.length >= 10}
+              onClick={() => setCustomFields((fields) => [...fields, { name: '', value: '' }])}
+              className="text-xs px-2.5 py-1.5 rounded-md border border-stone-300 text-stone-700 hover:bg-white disabled:opacity-50"
+            >
+              + Campo
+            </button>
+          </div>
+          {customFields.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {customFields.map((field, index) => (
+                <div key={index} className="flex gap-2">
+                  <input
+                    value={field.name}
+                    onChange={(e) => setCustomFields((fields) => fields.map((item, i) => i === index ? { ...item, name: e.target.value } : item))}
+                    placeholder="Nome"
+                    maxLength={100}
+                    className="w-1/3 px-3 py-2 rounded-md border border-stone-300 bg-white text-sm"
+                  />
+                  <input
+                    value={field.value}
+                    onChange={(e) => setCustomFields((fields) => fields.map((item, i) => i === index ? { ...item, value: e.target.value } : item))}
+                    placeholder="Valor"
+                    maxLength={1000}
+                    className="flex-1 px-3 py-2 rounded-md border border-stone-300 bg-white text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCustomFields((fields) => fields.filter((_, i) => i !== index))}
+                    className="px-2 text-xs text-red-700 hover:bg-red-50 rounded"
+                    aria-label="Remover campo"
+                  >
+                    Remover
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between rounded-md border border-stone-200 bg-stone-50 px-3 py-2.5">

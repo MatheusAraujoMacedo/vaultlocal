@@ -3,6 +3,11 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { unwrapDataKey, decryptField, getSessionKek, buildDataKeyAad, buildFieldAad } from '../crypto'
 
+interface CustomField {
+  name: string
+  value: string
+}
+
 interface PasswordHistoryItem {
   password: string
   changed_at: string
@@ -19,6 +24,7 @@ interface DecryptedEntry {
   favorite: boolean
   passwordHistoryEnc: string | null
   noncePasswordHistory: string | null
+  customFields: CustomField[]
 }
 
 export default function EntryDetail() {
@@ -53,6 +59,26 @@ export default function EntryDetail() {
           key,
           e.crypto_version === 2 ? buildFieldAad(e.id, e.title, e.site, 'password') : undefined,
         )
+        let customFields: CustomField[] = []
+        if (e.custom_fields_enc && e.nonce_custom_fields) {
+          const customFieldsJson = await decryptField(
+            { ciphertext: e.custom_fields_enc, nonce: e.nonce_custom_fields },
+            key,
+            e.crypto_version === 2 ? buildFieldAad(e.id, e.title, e.site, 'custom_fields') : undefined,
+          )
+          try {
+            const parsed = JSON.parse(customFieldsJson) as unknown
+            if (Array.isArray(parsed)) {
+              customFields = parsed.filter((item): item is CustomField =>
+                !!item && typeof item === 'object' &&
+                typeof (item as CustomField).name === 'string' &&
+                typeof (item as CustomField).value === 'string',
+              ).slice(0, 10)
+            }
+          } catch {
+            customFields = []
+          }
+        }
         const notes = e.notes_enc
           ? await decryptField(
               { ciphertext: e.notes_enc, nonce: e.nonce_notes! },
@@ -71,6 +97,7 @@ export default function EntryDetail() {
           favorite: e.favorite,
           passwordHistoryEnc: e.password_history_enc,
           noncePasswordHistory: e.nonce_password_history,
+          customFields,
         })
       } catch (err: any) {
         setError(err.message)
@@ -256,6 +283,17 @@ export default function EntryDetail() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {entry.customFields.length > 0 && (
+            <div className="px-6 py-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-stone-500 mb-2">Campos personalizados</p>
+              <div className="space-y-2">
+                {entry.customFields.map((field) => (
+                  <Field key={field.name} label={field.name} value={field.value} onCopy={() => copy(field.value)} />
+                ))}
+              </div>
             </div>
           )}
 

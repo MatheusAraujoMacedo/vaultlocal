@@ -32,6 +32,8 @@ def _to_out(e: VaultEntry) -> EntryOut:
         nonce_password=e.nonce_password,
         password_history_enc=e.password_history_enc,
         nonce_password_history=e.nonce_password_history,
+        custom_fields_enc=e.custom_fields_enc,
+        nonce_custom_fields=e.nonce_custom_fields,
         notes_enc=e.notes_enc,
         nonce_notes=e.nonce_notes,
         wrapped_data_key=e.wrapped_data_key,
@@ -117,6 +119,8 @@ async def create_entry(
         nonce_password=body.nonce_password,
         password_history_enc=body.password_history_enc,
         nonce_password_history=body.nonce_password_history,
+        custom_fields_enc=body.custom_fields_enc,
+        nonce_custom_fields=body.nonce_custom_fields,
         notes_enc=body.notes_enc,
         nonce_notes=body.nonce_notes,
         wrapped_data_key=body.wrapped_data_key,
@@ -241,6 +245,8 @@ async def update_entry(
     e.nonce_password = body.nonce_password
     e.password_history_enc = body.password_history_enc
     e.nonce_password_history = body.nonce_password_history
+    e.custom_fields_enc = body.custom_fields_enc
+    e.nonce_custom_fields = body.nonce_custom_fields
     e.notes_enc = body.notes_enc
     e.nonce_notes = body.nonce_notes
     e.wrapped_data_key = body.wrapped_data_key
