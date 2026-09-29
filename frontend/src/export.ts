@@ -20,6 +20,11 @@ const MAX_EXPORT_BYTES = 50 * 1024 * 1024
 const MAX_ENTRIES = 10_000
 const MAX_FIELD_CHARS = 1_000_000
 
+interface PasswordHistoryItem {
+  password: string
+  changed_at: string
+}
+
 interface PortableEntry {
   title: string
   site: string | null
@@ -29,6 +34,7 @@ interface PortableEntry {
   tags: string
   expires_at: string | null
   favorite: boolean
+  password_history: PasswordHistoryItem[]
 }
 
 interface ExportEnvelope {
@@ -72,6 +78,7 @@ function validatePortableEntry(entry: unknown): PortableEntry {
   const notes = value.notes
   const tags = value.tags
   const favorite = value.favorite ?? false
+  const passwordHistory = value.password_history ?? []
   const expiresAt = value.expires_at ?? null
 
   if (typeof title !== 'string' || title.length < 1 || title.length > 255) {
@@ -92,11 +99,16 @@ function validatePortableEntry(entry: unknown): PortableEntry {
   }
   if (typeof tags !== 'string' || tags.length > 512) throw new Error('Tags inválidas no arquivo de exportação')
   if (typeof favorite !== 'boolean') throw new Error('Favorito inválido no arquivo de exportação')
+  if (!Array.isArray(passwordHistory) || passwordHistory.length > 5 || passwordHistory.some((item) =>
+    !item || typeof item !== 'object' || typeof (item as PasswordHistoryItem).password !== 'string' ||
+    typeof (item as PasswordHistoryItem).changed_at !== 'string' ||
+    Number.isNaN(new Date((item as PasswordHistoryItem).changed_at).getTime())
+  )) throw new Error('Histórico de senhas inválido no arquivo de exportação')
   if (expiresAt !== null && (typeof expiresAt !== 'string' || Number.isNaN(new Date(expiresAt).getTime()))) {
     throw new Error('Data de expiração inválida no arquivo de exportação')
   }
 
-  return { title, site: site as string | null, username, password, notes: notes as string | null, tags, expires_at: expiresAt as string | null, favorite }
+  return { title, site: site as string | null, username, password, notes: notes as string | null, tags, expires_at: expiresAt as string | null, favorite, password_history: passwordHistory as PasswordHistoryItem[] }
 }
 
 async function deriveExportKey(password: string, salt: string): Promise<CryptoKey> {
@@ -124,6 +136,21 @@ async function decryptEntry(entry: EntryBlob, kek: CryptoKey): Promise<PortableE
       ? buildFieldAad(entry.id, entry.title, entry.site, 'password')
       : undefined,
   )
+  const historyCiphertext = entry.password_history_enc
+    ? await decryptField(
+        { ciphertext: entry.password_history_enc, nonce: entry.nonce_password_history! },
+        key,
+        entry.crypto_version === 2
+          ? buildFieldAad(entry.id, entry.title, entry.site, 'password_history')
+          : undefined,
+      )
+    : null
+  let passwordHistory: PasswordHistoryItem[] = []
+  if (historyCiphertext) {
+    const parsed = JSON.parse(historyCiphertext) as unknown
+    if (!Array.isArray(parsed)) throw new Error('Histórico de senhas inválido')
+    passwordHistory = parsed.slice(0, 5) as PasswordHistoryItem[]
+  }
   const notes = entry.notes_enc
     ? await decryptField(
         { ciphertext: entry.notes_enc, nonce: entry.nonce_notes! },
@@ -143,6 +170,7 @@ async function decryptEntry(entry: EntryBlob, kek: CryptoKey): Promise<PortableE
     tags: entry.tags,
     expires_at: entry.expires_at,
     favorite: entry.favorite,
+    password_history: passwordHistory,
   }
 }
 
@@ -280,6 +308,8 @@ export async function encryptPortableEntry(entry: PortableEntry): Promise<{
   tags: string
   expires_at: string | null
   favorite: boolean
+  password_history_enc: string | null
+  nonce_password_history: string | null
 }> {
   const kek = getSessionKek()
   const id = crypto.randomUUID()
@@ -295,6 +325,13 @@ export async function encryptPortableEntry(entry: PortableEntry): Promise<{
     dataKey,
     buildFieldAad(id, entry.title, entry.site, 'password'),
   )
+  const history = entry.password_history.length
+    ? await encryptField(
+        JSON.stringify(entry.password_history.slice(0, 5)),
+        dataKey,
+        buildFieldAad(id, entry.title, entry.site, 'password_history'),
+      )
+    : null
   const notes = entry.notes
     ? await encryptField(
         entry.notes,
@@ -319,6 +356,8 @@ export async function encryptPortableEntry(entry: PortableEntry): Promise<{
     tags: entry.tags,
     expires_at: entry.expires_at,
     favorite: entry.favorite,
+    password_history_enc: history?.ciphertext ?? null,
+    nonce_password_history: history?.nonce ?? null,
   }
 }
 

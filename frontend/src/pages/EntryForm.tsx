@@ -7,6 +7,11 @@ import {
   buildDataKeyAad, buildFieldAad, generateSecurePassword,
 } from '../crypto'
 
+interface PasswordHistoryItem {
+  password: string
+  changed_at: string
+}
+
 function toDateTimeLocal(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
@@ -29,6 +34,8 @@ export default function EntryForm() {
   const [tags, setTags] = useState('')
   const [expiresAt, setExpiresAt] = useState('')
   const [favorite, setFavorite] = useState(false)
+  const [originalPassword, setOriginalPassword] = useState('')
+  const [passwordHistory, setPasswordHistory] = useState<PasswordHistoryItem[]>([])
   const [error, setError] = useState('')
   const [loadError, setLoadError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -55,11 +62,32 @@ export default function EntryForm() {
           key,
           e.crypto_version === 2 ? buildFieldAad(e.id, e.title, e.site, 'username') : undefined,
         ))
-        setPassword(await decryptField(
+        const decryptedPassword = await decryptField(
           { ciphertext: e.password_enc, nonce: e.nonce_password },
           key,
           e.crypto_version === 2 ? buildFieldAad(e.id, e.title, e.site, 'password') : undefined,
-        ))
+        )
+        setPassword(decryptedPassword)
+        setOriginalPassword(decryptedPassword)
+        if (e.password_history_enc) {
+          const historyJson = await decryptField(
+            { ciphertext: e.password_history_enc, nonce: e.nonce_password_history! },
+            key,
+            e.crypto_version === 2 ? buildFieldAad(e.id, e.title, e.site, 'password_history') : undefined,
+          )
+          try {
+            const parsed = JSON.parse(historyJson) as unknown
+            if (Array.isArray(parsed)) {
+              setPasswordHistory(parsed.filter((item): item is PasswordHistoryItem =>
+                !!item && typeof item === 'object' &&
+                typeof (item as PasswordHistoryItem).password === 'string' &&
+                typeof (item as PasswordHistoryItem).changed_at === 'string',
+              ).slice(0, 5))
+            }
+          } catch {
+            setPasswordHistory([])
+          }
+        }
         setNotes(
           e.notes_enc
             ? await decryptField(
@@ -93,6 +121,12 @@ export default function EntryForm() {
       const n = notes
         ? await encryptField(notes, key, buildFieldAad(entryId, title, storedSite, 'notes'))
         : null
+      const nextHistory = isEdit && password !== originalPassword && originalPassword
+        ? [{ password: originalPassword, changed_at: new Date().toISOString() }, ...passwordHistory].slice(0, 5)
+        : passwordHistory
+      const history = nextHistory.length
+        ? await encryptField(JSON.stringify(nextHistory), key, buildFieldAad(entryId, title, storedSite, 'password_history'))
+        : null
 
       const data = {
         id: entryId,
@@ -103,6 +137,8 @@ export default function EntryForm() {
         nonce_username: u.nonce,
         password_enc: p.ciphertext,
         nonce_password: p.nonce,
+        password_history_enc: history ? history.ciphertext : null,
+        nonce_password_history: history ? history.nonce : null,
         notes_enc: n ? n.ciphertext : null,
         nonce_notes: n ? n.nonce : null,
         wrapped_data_key: wrapped.wrapped_data_key,

@@ -25,6 +25,11 @@ async function makeEntry(): Promise<EntryBlob> {
   const wrapped = await wrapDataKey(key, kek, buildDataKeyAad(id))
   const username = await encryptField('usuario@example.com', key, buildFieldAad(id, 'GitHub', 'github.com', 'username'))
   const password = await encryptField('Senha-Export-123!', key, buildFieldAad(id, 'GitHub', 'github.com', 'password'))
+  const history = await encryptField(
+    JSON.stringify([{ password: 'Senha-Export-Old!', changed_at: '2029-01-02T03:04:05.000Z' }]),
+    key,
+    buildFieldAad(id, 'GitHub', 'github.com', 'password_history'),
+  )
 
   return {
     id,
@@ -40,6 +45,8 @@ async function makeEntry(): Promise<EntryBlob> {
     nonce_username: username.nonce,
     password_enc: password.ciphertext,
     nonce_password: password.nonce,
+    password_history_enc: history.ciphertext,
+    nonce_password_history: history.nonce,
     notes_enc: null,
     nonce_notes: null,
     wrapped_data_key: wrapped.wrapped_data_key,
@@ -57,6 +64,7 @@ describe('encrypted export', () => {
     const entry = await makeEntry()
     const exported = await createEncryptedExport([entry], 'Export-password-123')
     expect(exported).not.toContain('Senha-Export-123!')
+    expect(exported).not.toContain('Senha-Export-Old!')
     expect(exported).not.toContain('usuario@example.com')
 
     const entries = await decryptEncryptedExport(exported, 'Export-password-123')
@@ -69,6 +77,7 @@ describe('encrypted export', () => {
       tags: 'trabalho,dev',
       expires_at: '2030-01-02T03:04:05.000Z',
       favorite: true,
+      password_history: [{ password: 'Senha-Export-Old!', changed_at: '2029-01-02T03:04:05.000Z' }],
     }])
   })
 

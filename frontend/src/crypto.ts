@@ -93,7 +93,7 @@ export function buildFieldAad(
   entryId: string,
   title: string,
   site: string | null | undefined,
-  field: 'username' | 'password' | 'notes',
+  field: 'username' | 'password' | 'notes' | 'password_history',
 ): string {
   return JSON.stringify(['VaultLocal', 'v2', 'field', entryId, title, site ?? '', field])
 }

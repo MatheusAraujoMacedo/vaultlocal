@@ -416,6 +416,8 @@ class EntryIn(BaseModel):
     nonce_username: str
     password_enc: str
     nonce_password: str
+    password_history_enc: str | None = None
+    nonce_password_history: str | None = None
     notes_enc: str | None = None
     nonce_notes: str | None = None
     wrapped_data_key: str
@@ -426,6 +428,13 @@ class EntryIn(BaseModel):
     @classmethod
     def _validate_nonce(cls, v: str) -> str:
         return _b64_len(v, 12, "nonce")
+
+    @field_validator("nonce_password_history")
+    @classmethod
+    def _validate_nonce_password_history(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return _b64_len(v, 12, "nonce_password_history")
 
     @field_validator("nonce_notes")
     @classmethod
@@ -438,6 +447,13 @@ class EntryIn(BaseModel):
     @classmethod
     def _validate_ciphertext(cls, v: str) -> str:
         return _b64_any_len(v, "ciphertext")
+
+    @field_validator("password_history_enc")
+    @classmethod
+    def _validate_password_history_enc(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return _b64_any_len(v, "password_history_enc")
 
     @field_validator("notes_enc")
     @classmethod
@@ -460,6 +476,8 @@ class EntryIn(BaseModel):
     def _validate_notes_pair(self) -> "EntryIn":
         if (self.notes_enc is None) != (self.nonce_notes is None):
             raise ValueError("notes_enc and nonce_notes must both be set or both be None")
+        if (self.password_history_enc is None) != (self.nonce_password_history is None):
+            raise ValueError("password_history_enc and nonce_password_history must both be set or both be None")
         return self
 
 
@@ -474,6 +492,8 @@ class EntryOut(BaseModel):
     nonce_username: str
     password_enc: str
     nonce_password: str
+    password_history_enc: str | None
+    nonce_password_history: str | None
     notes_enc: str | None
     nonce_notes: str | None
     wrapped_data_key: str

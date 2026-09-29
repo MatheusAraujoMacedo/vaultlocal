@@ -48,6 +48,16 @@ async def test_create_and_get_entry_roundtrips_blobs(client, register_and_login)
     assert fetched["wrapped_nonce"] == WRAPPED_NONCE
 
 
+async def test_create_entry_rejects_partial_password_history(client, register_and_login):
+    headers = await _auth_headers(register_and_login, "history-pair@test.com")
+    resp = await client.post(
+        "/api/v1/entries",
+        headers=headers,
+        json=_entry_payload(password_history_enc=ENC_NOTES, nonce_password_history=None),
+    )
+    assert resp.status_code == 422
+
+
 async def test_create_entry_without_notes(client, register_and_login):
     headers = await _auth_headers(register_and_login, "noNotes@test.com")
     resp = await client.post(

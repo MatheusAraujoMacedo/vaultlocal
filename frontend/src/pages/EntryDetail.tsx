@@ -3,6 +3,11 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { unwrapDataKey, decryptField, getSessionKek, buildDataKeyAad, buildFieldAad } from '../crypto'
 
+interface PasswordHistoryItem {
+  password: string
+  changed_at: string
+}
+
 interface DecryptedEntry {
   id: string
   title: string
@@ -12,6 +17,8 @@ interface DecryptedEntry {
   notes: string | null
   tags: string
   favorite: boolean
+  passwordHistoryEnc: string | null
+  noncePasswordHistory: string | null
 }
 
 export default function EntryDetail() {
@@ -19,6 +26,9 @@ export default function EntryDetail() {
   const nav = useNavigate()
   const [entry, setEntry] = useState<DecryptedEntry | null>(null)
   const [showPassword, setShowPassword] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [passwordHistory, setPasswordHistory] = useState<PasswordHistoryItem[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -50,12 +60,57 @@ export default function EntryDetail() {
               e.crypto_version === 2 ? buildFieldAad(e.id, e.title, e.site, 'notes') : undefined,
             )
           : null
-        setEntry({ id: e.id, title: e.title, site: e.site, username, password, notes, tags: e.tags, favorite: e.favorite })
+        setEntry({
+          id: e.id,
+          title: e.title,
+          site: e.site,
+          username,
+          password,
+          notes,
+          tags: e.tags,
+          favorite: e.favorite,
+          passwordHistoryEnc: e.password_history_enc,
+          noncePasswordHistory: e.nonce_password_history,
+        })
       } catch (err: any) {
         setError(err.message)
       }
     })()
   }, [id])
+
+  async function loadHistory() {
+    if (!entry?.passwordHistoryEnc || !entry.noncePasswordHistory || !id || !showHistory) return
+    setHistoryLoading(true)
+    try {
+      const e = await api.getEntry(id)
+      const kek = getSessionKek()
+      const key = await unwrapDataKey(
+        { wrapped_data_key: e.wrapped_data_key, wrapped_nonce: e.wrapped_nonce },
+        kek,
+        e.crypto_version === 2 ? buildDataKeyAad(e.id) : undefined,
+      )
+      if (!e.password_history_enc || !e.nonce_password_history) {
+        throw new Error('Histórico de senhas indisponível')
+      }
+      const plaintext = await decryptField(
+        { ciphertext: e.password_history_enc, nonce: e.nonce_password_history },
+        key,
+        e.crypto_version === 2 ? buildFieldAad(e.id, e.title, e.site, 'password_history') : undefined,
+      )
+      const parsed = JSON.parse(plaintext) as unknown
+      if (!Array.isArray(parsed)) throw new Error('Histórico de senhas inválido')
+      setPasswordHistory(parsed.filter((item): item is PasswordHistoryItem =>
+        !!item && typeof item === 'object' &&
+        typeof (item as PasswordHistoryItem).password === 'string' &&
+        typeof (item as PasswordHistoryItem).changed_at === 'string',
+      ).slice(0, 5))
+    } catch (err: any) {
+      setError(err.message)
+      setShowHistory(false)
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
 
   async function copy(text: string) {
     try {
@@ -75,6 +130,10 @@ export default function EntryDetail() {
       setError(e.message)
     }
   }
+
+  useEffect(() => {
+    if (showHistory && passwordHistory.length === 0) void loadHistory()
+  }, [showHistory])
 
   if (error) {
     return (
@@ -164,6 +223,41 @@ export default function EntryDetail() {
               </div>
             </div>
           </div>
+
+          {entry.passwordHistoryEnc && (
+            <div className="px-6 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-stone-500">Histórico de senhas</p>
+                  <p className="text-xs text-stone-400 mt-1">Até 5 senhas anteriores, sempre cifradas no cofre.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowHistory((value) => !value)}
+                  className="text-xs px-2.5 py-1.5 rounded-md border border-stone-300 text-stone-700 hover:bg-stone-50"
+                >
+                  {showHistory ? 'Ocultar' : 'Ver histórico'}
+                </button>
+              </div>
+              {showHistory && (
+                <div className="mt-3 space-y-2">
+                  {historyLoading ? (
+                    <p className="text-xs text-stone-400">Descriptografando histórico…</p>
+                  ) : passwordHistory.length === 0 ? (
+                    <p className="text-xs text-stone-400">Nenhum histórico disponível.</p>
+                  ) : passwordHistory.map((item) => (
+                    <div key={item.changed_at} className="flex items-center justify-between gap-3 rounded-md border border-stone-200 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs text-stone-700 truncate">••••••••••••••••</p>
+                        <p className="text-[11px] text-stone-400 mt-1">Alterada em {new Date(item.changed_at).toLocaleString('pt-BR')}</p>
+                      </div>
+                      <button type="button" onClick={() => copy(item.password)} className="shrink-0 text-xs px-2.5 py-1.5 rounded-md border border-stone-300 text-stone-700 hover:bg-stone-50">Copiar</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {entry.notes && (
             <div className="px-6 py-4">
