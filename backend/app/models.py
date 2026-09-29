@@ -37,7 +37,7 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
     auth_method: Mapped[str] = mapped_column(
-        String(20), default="local", server_default="local"
+        Text, default="local", server_default="local"
     )
     google_sub: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
     totp_secret_enc: Mapped[bytes | None] = mapped_column(
@@ -107,6 +107,9 @@ class VaultEntry(Base):
     )
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
+    )
+    favorite: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=False, server_default=sa.false(), index=True
     )
 
     wrapped_data_key: Mapped[str] = mapped_column(Text)
@@ -189,7 +192,7 @@ class PasswordResetToken(Base):
     user_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
-    token_hash: Mapped[str] = mapped_column(Text, unique=True, index=True)
+    token_hash: Mapped[str] = mapped_column(Text, unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     request_ip_hash: Mapped[str | None] = mapped_column(Text, nullable=True)

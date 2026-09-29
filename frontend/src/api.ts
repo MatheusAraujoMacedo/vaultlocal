@@ -63,6 +63,7 @@ async function request<T>(
 export interface EntryListItem {
   id: string
   title: string
+  favorite: boolean
   site: string | null
   tags: string
   expires_at: string | null
@@ -86,6 +87,8 @@ export interface EntryBlob extends EntryListItem {
   wrapped_data_key: string
   wrapped_nonce: string
 }
+
+export type EntryWrite = Omit<EntryBlob, 'created_at' | 'updated_at'>
 
 export interface LoginResult {
   status: 'mfa_setup_required' | 'recovery_setup_required' | 'mfa_verify_required'
@@ -185,6 +188,8 @@ export type SecurityEventType =
   | 'entry_created'
   | 'entry_updated'
   | 'entry_deleted'
+  | 'entry_favorited'
+  | 'entry_unfavorited'
   | 'health_scan'
   | 'passkey_added'
   | 'passkey_renamed'
@@ -436,11 +441,17 @@ export const api = {
 
   getEntry: (id: string) => request<EntryBlob>(`/entries/${id}`),
 
-  createEntry: (data: Omit<EntryBlob, 'created_at' | 'updated_at'>) =>
+  createEntry: (data: EntryWrite) =>
     request<EntryBlob>('/entries', { method: 'POST', body: JSON.stringify(data) }),
 
-  updateEntry: (id: string, data: Omit<EntryBlob, 'created_at' | 'updated_at'>) =>
+  updateEntry: (id: string, data: EntryWrite) =>
     request<EntryBlob>(`/entries/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  setFavorite: (id: string, favorite: boolean) =>
+    request<EntryBlob>(`/entries/${id}/favorite`, {
+      method: 'PATCH',
+      body: JSON.stringify({ favorite }),
+    }),
 
   deleteEntry: (id: string) =>
     request<void>(`/entries/${id}`, { method: 'DELETE' }),

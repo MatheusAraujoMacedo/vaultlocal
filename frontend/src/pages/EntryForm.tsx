@@ -28,6 +28,7 @@ export default function EntryForm() {
   const [notes, setNotes] = useState('')
   const [tags, setTags] = useState('')
   const [expiresAt, setExpiresAt] = useState('')
+  const [favorite, setFavorite] = useState(false)
   const [error, setError] = useState('')
   const [loadError, setLoadError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -70,6 +71,7 @@ export default function EntryForm() {
         )
         setTags(e.tags)
         setExpiresAt(e.expires_at ? toDateTimeLocal(e.expires_at) : '')
+        setFavorite(e.favorite)
       } catch (err: any) {
         setLoadError(err.message)
       }
@@ -107,6 +109,7 @@ export default function EntryForm() {
         wrapped_nonce: wrapped.wrapped_nonce,
         tags,
         expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
+        favorite,
       }
       if (isEdit) {
         await api.updateEntry(id!, data)
@@ -231,6 +234,20 @@ export default function EntryForm() {
             rows={3}
             className="w-full px-3 py-2 rounded-md border border-stone-300 bg-white focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition"
           />
+        </div>
+
+        <div className="flex items-center justify-between rounded-md border border-stone-200 bg-stone-50 px-3 py-2.5">
+          <div>
+            <p className="text-sm font-medium text-stone-700">Favorito</p>
+            <p className="text-xs text-stone-400 mt-0.5">Fixe esta entrada para encontrá-la rapidamente.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFavorite((value) => !value)}
+            className={`text-sm px-3 py-1.5 rounded-md border transition ${favorite ? 'bg-stone-900 text-white border-stone-900' : 'border-stone-300 text-stone-700 hover:bg-white'}`}
+          >
+            {favorite ? '★ Favorito' : '☆ Favoritar'}
+          </button>
         </div>
 
         <div>

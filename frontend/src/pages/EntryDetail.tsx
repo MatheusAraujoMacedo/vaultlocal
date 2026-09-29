@@ -11,6 +11,7 @@ interface DecryptedEntry {
   password: string
   notes: string | null
   tags: string
+  favorite: boolean
 }
 
 export default function EntryDetail() {
@@ -49,7 +50,7 @@ export default function EntryDetail() {
               e.crypto_version === 2 ? buildFieldAad(e.id, e.title, e.site, 'notes') : undefined,
             )
           : null
-        setEntry({ id: e.id, title: e.title, site: e.site, username, password, notes, tags: e.tags })
+        setEntry({ id: e.id, title: e.title, site: e.site, username, password, notes, tags: e.tags, favorite: e.favorite })
       } catch (err: any) {
         setError(err.message)
       }
@@ -100,7 +101,24 @@ export default function EntryDetail() {
 
       <div className="mt-4 bg-white border border-stone-200 rounded-lg overflow-hidden">
         <div className="px-6 py-5 border-b border-stone-200">
-          <h1 className="text-xl font-semibold text-stone-900">{entry.title}</h1>
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-xl font-semibold text-stone-900">{entry.title}</h1>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const updated = await api.setFavorite(entry.id, !entry.favorite)
+                  setEntry((current) => current ? { ...current, favorite: updated.favorite } : current)
+                } catch (err: any) {
+                  setError(err.message)
+                }
+              }}
+              className="text-sm px-2.5 py-1.5 rounded-md border border-stone-300 text-stone-700 hover:bg-stone-50 transition"
+              title={entry.favorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+            >
+              {entry.favorite ? '★ Favorito' : '☆ Favoritar'}
+            </button>
+          </div>
           {entry.site && (
             <a
               href={entry.site.startsWith('http') ? entry.site : `https://${entry.site}`}

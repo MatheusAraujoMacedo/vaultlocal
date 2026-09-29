@@ -28,6 +28,7 @@ interface PortableEntry {
   notes: string | null
   tags: string
   expires_at: string | null
+  favorite: boolean
 }
 
 interface ExportEnvelope {
@@ -70,6 +71,7 @@ function validatePortableEntry(entry: unknown): PortableEntry {
   const password = value.password
   const notes = value.notes
   const tags = value.tags
+  const favorite = value.favorite ?? false
   const expiresAt = value.expires_at ?? null
 
   if (typeof title !== 'string' || title.length < 1 || title.length > 255) {
@@ -89,11 +91,12 @@ function validatePortableEntry(entry: unknown): PortableEntry {
     throw new Error('Notas excedem o limite permitido')
   }
   if (typeof tags !== 'string' || tags.length > 512) throw new Error('Tags inválidas no arquivo de exportação')
+  if (typeof favorite !== 'boolean') throw new Error('Favorito inválido no arquivo de exportação')
   if (expiresAt !== null && (typeof expiresAt !== 'string' || Number.isNaN(new Date(expiresAt).getTime()))) {
     throw new Error('Data de expiração inválida no arquivo de exportação')
   }
 
-  return { title, site: site as string | null, username, password, notes: notes as string | null, tags, expires_at: expiresAt as string | null }
+  return { title, site: site as string | null, username, password, notes: notes as string | null, tags, expires_at: expiresAt as string | null, favorite }
 }
 
 async function deriveExportKey(password: string, salt: string): Promise<CryptoKey> {
@@ -139,6 +142,7 @@ async function decryptEntry(entry: EntryBlob, kek: CryptoKey): Promise<PortableE
     notes,
     tags: entry.tags,
     expires_at: entry.expires_at,
+    favorite: entry.favorite,
   }
 }
 
@@ -275,6 +279,7 @@ export async function encryptPortableEntry(entry: PortableEntry): Promise<{
   wrapped_nonce: string
   tags: string
   expires_at: string | null
+  favorite: boolean
 }> {
   const kek = getSessionKek()
   const id = crypto.randomUUID()
@@ -313,6 +318,7 @@ export async function encryptPortableEntry(entry: PortableEntry): Promise<{
     wrapped_nonce: wrapped.wrapped_nonce,
     tags: entry.tags,
     expires_at: entry.expires_at,
+    favorite: entry.favorite,
   }
 }
 

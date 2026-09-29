@@ -401,10 +401,15 @@ class ChangePasswordIn(BaseModel):
         return _b64_len(v, 16, info.field_name)
 
 
+class EntryFavoriteIn(BaseModel):
+    favorite: bool
+
+
 class EntryIn(BaseModel):
     id: UUID4
     crypto_version: Literal[2] = 2
     title: str = Field(min_length=1, max_length=255)
+    favorite: bool = False
     site: str | None = Field(default=None, max_length=255)
     expires_at: datetime | None = None
     username_enc: str
@@ -462,6 +467,7 @@ class EntryOut(BaseModel):
     id: str
     crypto_version: Literal[1, 2]
     title: str
+    favorite: bool
     site: str | None
     expires_at: datetime | None
     username_enc: str
@@ -480,6 +486,7 @@ class EntryOut(BaseModel):
 class EntryListItem(BaseModel):
     id: str
     title: str
+    favorite: bool
     site: str | None
     tags: str
     expires_at: str | None
@@ -503,6 +510,8 @@ class SecurityEventOut(BaseModel):
         "entry_deleted",
         "entry_restored",
         "entry_permanently_deleted",
+        "entry_favorited",
+        "entry_unfavorited",
         "health_scan",
         "passkey_added",
         "passkey_renamed",

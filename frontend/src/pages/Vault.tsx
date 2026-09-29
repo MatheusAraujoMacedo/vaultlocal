@@ -19,6 +19,7 @@ export default function Vault() {
   const [entries, setEntries] = useState<EntryListItem[]>([])
   const [search, setSearch] = useState('')
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [quickAccessLoading, setQuickAccessLoading] = useState(false)
@@ -275,15 +276,16 @@ export default function Vault() {
   }, [entries])
 
   const displayedEntries = useMemo(() => {
-    if (!selectedTag) return entries
     return entries.filter((e) => {
+      if (favoritesOnly && !e.favorite) return false
+      if (!selectedTag) return true
       if (!e.tags) return false
       return e.tags
         .split(',')
         .map((t) => t.trim())
         .includes(selectedTag)
     })
-  }, [entries, selectedTag])
+  }, [entries, selectedTag, favoritesOnly])
 
   return (
     <div className="min-h-screen">
@@ -428,7 +430,14 @@ export default function Vault() {
           )}
         </div>
 
-        <div className="mb-4">
+        <div className="mb-4 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setFavoritesOnly((value) => !value)}
+            className={`shrink-0 text-xs px-3 py-2 rounded-md border transition ${favoritesOnly ? 'bg-stone-900 text-white border-stone-900' : 'border-stone-300 text-stone-700 hover:bg-stone-50'}`}
+          >
+            ★ Favoritos
+          </button>
           <input
             type="text"
             value={search}
@@ -480,11 +489,11 @@ export default function Vault() {
         ) : displayedEntries.length === 0 ? (
           <div className="text-center py-16 border border-dashed border-stone-300 rounded-lg">
             <p className="text-stone-500 text-sm">
-              {search || selectedTag
+              {search || selectedTag || favoritesOnly
                 ? 'Nenhuma entrada encontrada'
                 : 'Seu cofre está vazio'}
             </p>
-            {!search && !selectedTag && (
+            {!search && !selectedTag && !favoritesOnly && (
               <Link
                 to="/entry/new"
                 className="inline-block mt-3 text-sm font-medium text-stone-900 hover:underline"
@@ -503,9 +512,10 @@ export default function Vault() {
                 >
                   <div className="flex items-center justify-between">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-stone-900 truncate">
-                        {e.title}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-stone-900 truncate">{e.title}</p>
+                        {e.favorite && <span className="text-xs text-amber-600" title="Favorito">★</span>}
+                      </div>
                       {e.site && (
                         <p className="text-xs text-stone-500 truncate mt-0.5">
                           {e.site}

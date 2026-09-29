@@ -18,6 +18,7 @@ fluxos de autenticação, proteção do cofre, análise de segurança e recupera
 - [x] Exportação/importação cifrada
 - [x] Security Timeline
 - [x] Lixeira segura com restauração e retenção de 30 dias
+- [x] Favoritos, filtro rápido e preservação no export/import cifrado
 - [x] Health Dashboard
 - [x] HIBP online por k-anonymity
 - [x] Adapter para HIBP offline
@@ -36,7 +37,7 @@ O corpus SHA-1 local foi validado com 1.048.576 ranges e um fixture conhecido
 
 ## Qualidade técnica
 
-- [x] 119 testes backend
+- [x] 121 testes backend
 - [x] 43 testes frontend
 - [x] TypeScript
 - [x] Build Vite

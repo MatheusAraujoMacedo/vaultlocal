@@ -6,6 +6,8 @@ const EVENT_LABELS: Record<SecurityEventType, string> = {
   entry_created: 'Entrada adicionada ao cofre',
   entry_updated: 'Entrada atualizada',
   entry_deleted: 'Entrada removida',
+  entry_favorited: 'Entrada adicionada aos favoritos',
+  entry_unfavorited: 'Entrada removida dos favoritos',
   health_scan: 'Auditoria de segurança executada',
   passkey_added: 'Novo dispositivo confiável adicionado',
   passkey_renamed: 'Dispositivo confiável renomeado',

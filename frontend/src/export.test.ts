@@ -31,6 +31,7 @@ async function makeEntry(): Promise<EntryBlob> {
     crypto_version: 2,
     title: 'GitHub',
     site: 'github.com',
+    favorite: true,
     tags: 'trabalho,dev',
     expires_at: '2030-01-02T03:04:05.000Z',
     created_at: new Date().toISOString(),
@@ -67,6 +68,7 @@ describe('encrypted export', () => {
       notes: null,
       tags: 'trabalho,dev',
       expires_at: '2030-01-02T03:04:05.000Z',
+      favorite: true,
     }])
   })
 

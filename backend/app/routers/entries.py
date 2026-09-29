@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.audit import record_security_event
 from ..deps import get_current_user, get_db
 from ..models import User, VaultEntry
-from ..schemas import EntryIn, EntryListItem, EntryOut, TrashEntryOut
+from ..schemas import EntryFavoriteIn, EntryIn, EntryListItem, EntryOut, TrashEntryOut
 
 router = APIRouter(prefix="/entries", tags=["entries"])
 TRASH_RETENTION_DAYS = 30
@@ -23,6 +23,7 @@ def _to_out(e: VaultEntry) -> EntryOut:
         id=e.id,
         crypto_version=e.crypto_version,
         title=e.title,
+        favorite=e.favorite,
         site=e.site,
         expires_at=e.expires_at,
         username_enc=e.username_enc,
@@ -51,6 +52,7 @@ async def list_entries(
         EntryListItem(
             id=e.id,
             title=e.title,
+            favorite=e.favorite,
             site=e.site,
             tags=e.tags or "",
             expires_at=e.expires_at.isoformat() if e.expires_at else None,
@@ -79,6 +81,7 @@ async def search_entries(
         EntryListItem(
             id=e.id,
             title=e.title,
+            favorite=e.favorite,
             site=e.site,
             tags=e.tags or "",
             expires_at=e.expires_at.isoformat() if e.expires_at else None,
@@ -103,6 +106,7 @@ async def create_entry(
         user_id=user.id,
         crypto_version=2,
         title=body.title,
+        favorite=body.favorite,
         site=body.site,
         expires_at=body.expires_at,
         username_enc=body.username_enc,
@@ -150,6 +154,7 @@ async def list_trash(
         {
             "id": e.id,
             "title": e.title,
+            "favorite": e.favorite,
             "site": e.site,
             "tags": e.tags or "",
             "expires_at": e.expires_at.isoformat() if e.expires_at else None,
@@ -223,6 +228,7 @@ async def update_entry(
         raise HTTPException(400, "entry id does not match path")
     e.crypto_version = 2
     e.title = body.title
+    e.favorite = body.favorite
     e.site = body.site
     e.expires_at = body.expires_at
     e.username_enc = body.username_enc
@@ -236,6 +242,24 @@ async def update_entry(
     e.tags = body.tags
     e.updated_at = datetime.now(timezone.utc)
     await record_security_event(db, user.id, "entry_updated")
+    await db.commit()
+    await db.refresh(e)
+    return _to_out(e)
+
+
+@router.patch("/{entry_id}/favorite", response_model=EntryOut)
+async def set_favorite(
+    entry_id: str,
+    body: EntryFavoriteIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    e = await db.get(VaultEntry, entry_id)
+    if not e or e.user_id != user.id or e.deleted_at is not None:
+        raise HTTPException(404, "not found")
+    e.favorite = body.favorite
+    e.updated_at = datetime.now(timezone.utc)
+    await record_security_event(db, user.id, "entry_favorited" if body.favorite else "entry_unfavorited")
     await db.commit()
     await db.refresh(e)
     return _to_out(e)

@@ -122,6 +122,37 @@ async def test_update_entry_changes_blobs(client, register_and_login):
     assert updated["updated_at"] >= resp.json()["created_at"]
 
 
+async def test_favorite_entry_roundtrips_and_is_filterable(client, register_and_login):
+    headers = await _auth_headers(register_and_login, "favorite@test.com")
+    first = await client.post("/api/v1/entries", headers=headers, json=_entry_payload(title="Favorite"))
+    second = await client.post("/api/v1/entries", headers=headers, json=_entry_payload(title="Normal"))
+    first_id = first.json()["id"]
+
+    updated = await client.patch(
+        f"/api/v1/entries/{first_id}/favorite",
+        headers=headers,
+        json={"favorite": True},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["favorite"] is True
+
+    fetched = await client.get(f"/api/v1/entries/{first_id}", headers=headers)
+    assert fetched.json()["favorite"] is True
+
+    listed = await client.get("/api/v1/entries", headers=headers)
+    favorites = [entry for entry in listed.json() if entry["favorite"]]
+    assert [entry["id"] for entry in favorites] == [first_id]
+    assert second.json()["favorite"] is False
+
+    unfavorited = await client.patch(
+        f"/api/v1/entries/{first_id}/favorite",
+        headers=headers,
+        json={"favorite": False},
+    )
+    assert unfavorited.status_code == 200
+    assert unfavorited.json()["favorite"] is False
+
+
 async def test_delete_entry_moves_it_to_trash_and_restore_works(client, register_and_login):
     headers = await _auth_headers(register_and_login, "erin@test.com")
     resp = await client.post("/api/v1/entries", headers=headers, json=_entry_payload(title="Temp"))
