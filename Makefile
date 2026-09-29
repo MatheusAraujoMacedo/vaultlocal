@@ -30,6 +30,16 @@ migrate:
 revision:
 	cd backend && ../.venv/bin/alembic revision --autogenerate -m "$(m)"
 
+hibp-download:
+	@mkdir -p data/hibp/sha1
+	@command -v haveibeenpwned-downloader >/dev/null || (echo "Instale haveibeenpwned-downloader (.NET 10+): https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader" && exit 1)
+	haveibeenpwned-downloader data/hibp/sha1 --max-retries 5 $(if $(P),-p $(P),)
+
+hibp-index-ready:
+	@test -f data/hibp/sha1/sha1.index
+	@test -s data/hibp/sha1/sha1.index
+	@echo "Índice HIBP local disponível."
+
 test:
 	cd backend && ../.venv/bin/python -m pytest -q
 

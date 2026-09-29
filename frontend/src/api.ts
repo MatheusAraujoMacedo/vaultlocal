@@ -22,8 +22,12 @@ function readTokens(): TokenBundle {
   }
 }
 
-function getToken(): string | null {
+export function getAccessToken(): string | null {
   return readTokens().access
+}
+
+function getToken(): string | null {
+  return getAccessToken()
 }
 
 export function setTokens(access: string, refresh: string) {
@@ -424,6 +428,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(report),
     }),
+
+  getLocalBreachStatus: () =>
+    request<{ available: boolean; source: string }>('/health/breach/local/status'),
 
   getLatestHealth: async (): Promise<HealthReport | null> => {
     const token = getToken()

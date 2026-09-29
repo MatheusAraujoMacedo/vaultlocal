@@ -47,6 +47,40 @@ async def test_post_report_upserts_when_exists(client, register_and_login):
     assert body["reused_count"] == 0
 
 
+async def test_local_breach_status_and_range(client, register_and_login, monkeypatch, tmp_path):
+    from app.config import settings
+
+    headers = await _auth_headers(register_and_login, "health-local@test.com")
+    monkeypatch.setattr(settings, "HIBP_LOCAL_DIR", str(tmp_path))
+    (tmp_path / "sha1.index").write_text("5BAA6\tETAG\n", encoding="utf-8")
+    (tmp_path / "5BAA6.txt").write_text(
+        "1E4C9B93F3F0682250B6CF8331B7EE68FD8:10\r\n",
+        encoding="utf-8",
+    )
+
+    status = await client.get("/api/v1/health/breach/local/status", headers=headers)
+    assert status.status_code == 200
+    assert status.json() == {"available": True, "source": "hibp-local-sha1"}
+
+    resp = await client.get("/api/v1/health/breach/local/range/5BAA6", headers=headers)
+    assert resp.status_code == 200
+    assert resp.text.startswith("1E4C9B93F3F0682250B6CF8331B7EE68FD8:10")
+
+    invalid = await client.get("/api/v1/health/breach/local/range/../5BAA6", headers=headers)
+    assert invalid.status_code in (400, 404)
+
+
+async def test_local_breach_status_reports_missing_index(client, register_and_login, monkeypatch, tmp_path):
+    from app.config import settings
+
+    headers = await _auth_headers(register_and_login, "health-local-missing@test.com")
+    monkeypatch.setattr(settings, "HIBP_LOCAL_DIR", str(tmp_path))
+
+    status = await client.get("/api/v1/health/breach/local/status", headers=headers)
+    assert status.status_code == 200
+    assert status.json()["available"] is False
+
+
 async def test_post_report_tracks_breach_count_and_score(client, register_and_login):
     headers = await _auth_headers(register_and_login, "health-breach@test.com")
     resp = await client.post(

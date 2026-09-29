@@ -95,6 +95,6 @@ No navegador com internet, validar:
 6. confirmar que o request não contém senha ou hash completo;
 7. confirmar que o backend registra somente breached_count.
 
-## Próximo marco
+## Estado atual
 
-**Phase 5.2 — índice HIBP offline importável**, preservando a mesma interface checkPasswords e evitando dependência de rede.
+**Phase 5.2 — adapter para índice HIBP offline importável:** concluído. O próximo trabalho é instalar/atualizar o corpus oficial e executar o E2E com o modo local.

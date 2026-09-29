@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api } from '../api'
+import { api, getAccessToken } from '../api'
 import { analyze } from '../health/engine'
-import { checkPasswordsWithHibp } from '../health/breach'
+import { checkPasswordsWithHibp, checkPasswordsWithLocalIndex, type BreachSource } from '../health/breach'
 import { computeScore } from '../health/score'
 import type { EntryForAnalysis } from '../health/rules'
 import { unwrapDataKey, decryptField, getSessionKek, buildDataKeyAad, buildFieldAad } from '../crypto'
@@ -47,6 +47,8 @@ export default function Health() {
   const [breachLoading, setBreachLoading] = useState(false)
   const [breachStatus, setBreachStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [breachError, setBreachError] = useState('')
+  const [localIndexAvailable, setLocalIndexAvailable] = useState(false)
+  const [breachSource, setBreachSource] = useState<BreachSource>('online')
   const [filterRule, setFilterRule] = useState<string | null>(null)
 
   useEffect(() => {
@@ -112,6 +114,12 @@ export default function Health() {
         setBreachedCount(lastBreachedCount)
         setAnalysisEntries(forAnalysis)
 
+        const localStatus = await api
+          .getLocalBreachStatus()
+          .catch(() => ({ available: false, source: 'hibp-local-sha1' }))
+        setLocalIndexAvailable(localStatus.available)
+        setBreachSource(localStatus.available ? 'local' : 'online')
+
         const flat: IssueView[] = []
         for (const eh of report.entries) {
           for (const iss of eh.issues) {
@@ -145,9 +153,15 @@ export default function Health() {
     setBreachError('')
 
     try {
-      const result = await checkPasswordsWithHibp(
-        analysisEntries.map((entry) => ({ id: entry.id, password: entry.password })),
-      )
+      const result =
+        breachSource === 'local'
+          ? await checkPasswordsWithLocalIndex(
+              analysisEntries.map((entry) => ({ id: entry.id, password: entry.password })),
+              getAccessToken() ?? '',
+            )
+          : await checkPasswordsWithHibp(
+              analysisEntries.map((entry) => ({ id: entry.id, password: entry.password })),
+            )
 
       const nextBreachMatches: IssueView[] = result.matches.map((match) => ({
         entryId: match.entryId,
@@ -319,9 +333,9 @@ export default function Health() {
           <div>
             <h2 className="text-sm font-medium text-stone-900">Verificar vazamentos conhecidos</h2>
             <p className="mt-1 text-sm text-stone-500 max-w-2xl">
-              Consulta opcional ao Have I Been Pwned usando k-anonymity. O VaultLocal calcula o
-              SHA-1 no navegador, envia somente os 5 primeiros caracteres do hash e compara o
-              restante localmente. A senha e o hash completo não são enviados ao HIBP.
+              A senha é hasheada no navegador e apenas a faixa necessária é consultada. No modo
+              local, nenhuma consulta deixa a máquina; no modo online, apenas o prefixo de 5
+              caracteres é enviado ao HIBP e o match completo fica no navegador.
             </p>
             {breachedCount > 0 && breachStatus === 'idle' && (
               <p className="mt-2 text-xs text-stone-500">
@@ -334,15 +348,32 @@ export default function Health() {
               </p>
             )}
             {breachError && <p className="mt-2 text-xs text-red-600">{breachError}</p>}
+            <p className="mt-2 text-xs text-stone-400">
+              Fonte: {breachSource === 'local' ? 'índice local HIBP' : 'HIBP online (k-anonymity)'}
+              {!localIndexAvailable && ' · índice local não instalado'}
+            </p>
           </div>
-          <button
+          <div className="flex items-center gap-2 shrink-0">
+            {localIndexAvailable && (
+              <select
+                value={breachSource}
+                onChange={(e) => setBreachSource(e.target.value as BreachSource)}
+                disabled={breachLoading}
+                className="px-2.5 py-2 rounded-md border border-stone-300 bg-white text-sm text-stone-700"
+              >
+                <option value="local">Índice local</option>
+                <option value="online">HIBP online</option>
+              </select>
+            )}
+            <button
             type="button"
             onClick={runBreachCheck}
             disabled={breachLoading || analysisEntries.length === 0}
             className="shrink-0 px-3 py-2 rounded-md border border-stone-300 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
-            {breachLoading ? 'Verificando…' : 'Verificar agora'}
-          </button>
+              {breachLoading ? 'Verificando…' : 'Verificar agora'}
+            </button>
+          </div>
         </div>
       </section>
 

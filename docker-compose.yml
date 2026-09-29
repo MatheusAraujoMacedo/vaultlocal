@@ -35,6 +35,9 @@ services:
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
       WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-VaultLocal}
       WEBAUTHN_ORIGIN: ${WEBAUTHN_ORIGIN:-http://localhost:8080}
+      HIBP_LOCAL_DIR: ${HIBP_LOCAL_DIR:-/var/lib/vaultlocal/hibp/sha1}
+    volumes:
+      - ./data/hibp/sha1:${HIBP_LOCAL_DIR:-/var/lib/vaultlocal/hibp/sha1}:ro
     depends_on:
       db:
         condition: service_healthy

@@ -205,7 +205,7 @@ Phase 3  ✅ Google OIDC + E2E
 Phase 4.1 ✅ WebAuthn / Passkey + PRF + E2E
 Phase 4.2 ✅ Login local + múltiplas passkeys + gestão/revogação
 Phase 5.1 ✅ Breach Check HIBP k-anonymity client-side + Health Dashboard
-Phase 5.2 📋 Índice HIBP offline importável
+Phase 5.2 ✅ Adapter para índice HIBP offline + 📋 importar/atualizar corpus
 ```
 
-**Próximo marco recomendado ao retomar:** implementar a **Phase 5.2 — índice HIBP offline importável**, mantendo a mesma interface do checker atual.
+**Próximo marco recomendado ao retomar:** instalar/atualizar o corpus HIBP local e validar o fluxo E2E com o seletor **Índice local**.

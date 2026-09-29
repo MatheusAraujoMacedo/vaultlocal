@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { checkPasswordsWithHibp, sha1Hex } from './breach';
+import { checkPasswordsWithHibp, checkPasswordsWithLocalIndex, sha1Hex } from './breach';
 
 describe('sha1Hex', () => {
   it('matches the canonical SHA-1 value for password', async () => {
@@ -64,5 +64,26 @@ describe('checkPasswordsWithHibp', () => {
         fetchMock as unknown as typeof fetch,
       ),
     ).rejects.toThrow('HTTP 503');
+  });
+
+  it('uses only the local API for the offline index', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe('/api/v1/health/breach/local/range/5BAA6');
+      expect(init?.headers).toEqual({ Authorization: 'Bearer access-token' });
+
+      return new Response(
+        '1E4C9B93F3F0682250B6CF8331B7EE68FD8:7\\r\\n',
+        { status: 200 },
+      );
+    });
+
+    const result = await checkPasswordsWithLocalIndex(
+      [{ id: 'entry-1', password: 'password' }],
+      'access-token',
+      fetchMock as unknown as typeof fetch,
+    );
+
+    expect(result.source).toBe('local');
+    expect(result.matches).toEqual([{ entryId: 'entry-1', prevalence: 7 }]);
   });
 });

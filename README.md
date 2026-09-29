@@ -94,7 +94,7 @@ Pontos de retomada:
 | 2 | Recovery key + reset destrutivo com token | ✅ implementado |
 | 3 | Google OIDC como identidade (opcional) | ✅ implementado — E2E validado |
 | 4 | WebAuthn / passkey para acesso rápido | ✅ 4.1 E2E browser validado; 4.2 implementado |
-| 5 | Breach check | ✅ 5.1 HIBP k-anonymity client-side; 📋 5.2 índice offline |
+| 5 | Breach check | ✅ 5.1 HIBP online k-anonymity + ✅ 5.2 adapter para índice local; 📋 importar/atualizar corpus |
 
 ## Dev local (sem Docker)
 

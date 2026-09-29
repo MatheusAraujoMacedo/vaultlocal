@@ -205,10 +205,44 @@ score = clamp(
   `/health`.
 - Lista `COMMON_PASSWORDS` é pequena (~35 entradas) e estática.
 
-## 9. Próximos passos
+## 9. Modo offline local
 
-- Modo offline completo com corpus HIBP importável e índice local.
-- Atualização incremental do índice offline sem enviar consultas de senha à rede.
+A Phase 5.2 usa o downloader oficial do HIBP no formato de diretório. O downloader
+gera os ranges SHA-1 individualmente e mantém `sha1.index` com os ETags para
+permitir atualizações incrementais sem baixar novamente ranges inalterados.
+
+O VaultLocal espera o corpus em:
+
+```
+data/hibp/sha1/
+├── sha1.index
+├── 00000.txt
+├── 00001.txt
+└── ...
+```
+
+Somente esse diretório é montado na API como read-only. O navegador envia ao
+backend local apenas o prefixo SHA-1 de 5 caracteres, recebe o range correspondente
+e faz o match do suffix localmente.
+
+Para instalar/atualizar o corpus:
+
+```bash
+dotnet tool install --global haveibeenpwned-downloader
+make hibp-download
+make hibp-index-ready
+```
+
+É possível ajustar o paralelismo, por exemplo:
+
+```bash
+make hibp-download P=32
+```
+
+O corpus não deve ser commitado no repositório.
+
+## 10. Próximos passos
+
 - Regra de entropia (zxcvbn ou equivalente) em vez de heurísticas de regex.
 - Detecção de reutilização por similaridade (hash normalizado, edição).
 - Histórico de relatórios com janela fixa (ex.: últimos 30) quando houver
@@ -216,7 +250,7 @@ score = clamp(
 - Botão "corrigir tudo" sugerindo senhas geradas em lote para entradas fracas.
 - Cobertura de testes de UI para `/health` (hoje só unit tests do engine/score).
 
-## 10. Roteiro E2E manual
+## 11. Roteiro E2E manual
 
 Pré-condição: stack no ar (`docker compose up -d --build`) e um usuário criado.
 
@@ -247,7 +281,7 @@ Pré-condição: stack no ar (`docker compose up -d --build`) e um usuário cria
    sobreviver ao reload; o backend pode manter apenas o `breached_count` agregado.
 10. Reload da página `/health` com KEK expirada: fazer login novamente e repetir a análise.
 
-## 11. Testes automatizados
+## 12. Testes automatizados
 
 - Backend: `make test-backend` (pytest; cobre os endpoints de health quando
   presentes, além do CRUD e auth).

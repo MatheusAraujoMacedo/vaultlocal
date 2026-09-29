@@ -9,6 +9,8 @@ dist/
 .worktrees/
 .playwright-mcp/
 backups/
+data/hibp/sha1/*
+!data/hibp/sha1/.gitkeep
 .remember/
 .ruff_cache/
 .coverage

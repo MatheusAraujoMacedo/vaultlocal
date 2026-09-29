@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     WEBAUTHN_RP_ID: str = "localhost"
     WEBAUTHN_RP_NAME: str = "VaultLocal"
     WEBAUTHN_ORIGIN: str = "http://localhost:8080"
+    HIBP_LOCAL_DIR: str = "/var/lib/vaultlocal/hibp/sha1"
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[2] / ".env",

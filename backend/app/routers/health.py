@@ -1,9 +1,14 @@
+import asyncio
+import re
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import settings
 from ..deps import get_current_user, get_db
 from ..models import HealthReport, User
 from ..schemas import HealthReportIn, HealthReportOut
@@ -33,6 +38,43 @@ def _to_out(r: HealthReport) -> HealthReportOut:
         created_at=r.created_at.isoformat(),
         updated_at=r.updated_at.isoformat(),
     )
+
+
+def _hibp_range_path(prefix: str) -> Path:
+    if not re.fullmatch(r"[0-9A-Fa-f]{5}", prefix):
+        raise HTTPException(400, "invalid breach range prefix")
+
+    base = Path(settings.HIBP_LOCAL_DIR).resolve()
+    candidates = [
+        (base / (prefix.upper() + ".txt")).resolve(),
+        (base / (prefix.lower() + ".txt")).resolve(),
+    ]
+    for candidate in candidates:
+        if candidate.parent != base:
+            raise HTTPException(400, "invalid breach range prefix")
+        if candidate.is_file():
+            return candidate
+    return candidates[0]
+
+
+@router.get("/breach/local/status")
+async def local_breach_status(user: User = Depends(get_current_user)):
+    base = Path(settings.HIBP_LOCAL_DIR)
+    available = base.is_dir() and (base / "sha1.index").is_file()
+    return {"available": available, "source": "hibp-local-sha1"}
+
+
+@router.get("/breach/local/range/{prefix}", response_class=PlainTextResponse)
+async def local_breach_range(
+    prefix: str,
+    user: User = Depends(get_current_user),
+):
+    path = _hibp_range_path(prefix)
+    if not path.is_file():
+        raise HTTPException(404, "local breach range not installed")
+
+    content = await asyncio.to_thread(path.read_text, encoding="utf-8")
+    return PlainTextResponse(content, media_type="text/plain")
 
 
 @router.post("/report", response_model=HealthReportOut)
