@@ -56,3 +56,11 @@ test-backend:
 
 test-frontend:
 	cd frontend && npm test
+
+verify:
+	@$(MAKE) test
+	@$(MAKE) test-frontend
+	cd frontend && npm run build
+	.venv/bin/ruff check .
+	@$(MAKE) hibp-validate-local
+	git diff --check

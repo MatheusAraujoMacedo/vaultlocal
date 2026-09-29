@@ -131,6 +131,7 @@ Acesse http://127.0.0.1:5173 (proxy `/api → :8000` já configurado).
 ```bash
 make test           # backend (pytest)
 make test-frontend  # frontend (vitest)
+make verify         # suíte completa + build + Ruff + HIBP local
 ```
 
 Validação do corpus HIBP offline (não versionado no Git):
