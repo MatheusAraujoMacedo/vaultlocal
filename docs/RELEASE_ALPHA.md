@@ -18,7 +18,12 @@ fluxos de autenticação, proteção do cofre, análise de segurança e recupera
 - [x] Health Dashboard
 - [x] HIBP online por k-anonymity
 - [x] Adapter para HIBP offline
-- [ ] Corpus HIBP completo importado e E2E local validado
+- [x] Corpus HIBP completo importado e E2E local validado
+
+### Validação do corpus HIBP local
+
+O corpus SHA-1 local foi validado com 1.048.576 ranges e um fixture conhecido (`password`).
+Use `make hibp-validate-local` para repetir a validação. Se o arquivo `sha1.index` for perdido, `make hibp-index-rebuild-local` pode reconstruir um índice local de prontidão após confirmar que todos os ranges estão presentes. Esse índice usa marcadores `LOCAL`; ele não representa ETags HTTP do downloader oficial.
 
 ## Checklist técnico
 

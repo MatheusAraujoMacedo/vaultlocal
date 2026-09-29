@@ -35,12 +35,18 @@ HIBP_DOWNLOADER ?= $(HOME)/.dotnet/tools/haveibeenpwned-downloader
 hibp-download:
 	@mkdir -p data/hibp/sha1
 	@test -x "$(HIBP_DOWNLOADER)" || (echo "Instale haveibeenpwned-downloader (.NET 10+): https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader" && exit 1)
-	"$(HIBP_DOWNLOADER)" data/hibp/sha1 --max-retries 5 -o $(if $(P),-p $(P),)
+	"$(HIBP_DOWNLOADER)" data/hibp/sha1 --max-retries 5 $(if $(P),-p $(P),)
 
 hibp-index-ready:
 	@test -f data/hibp/sha1/sha1.index
 	@test -s data/hibp/sha1/sha1.index
 	@echo "Índice HIBP local disponível."
+
+hibp-index-rebuild-local:
+	@python3 scripts/rebuild_hibp_index.py
+
+hibp-validate-local:
+	@python3 scripts/validate_hibp_local.py
 
 test:
 	cd backend && ../.venv/bin/python -m pytest -q
