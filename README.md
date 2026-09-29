@@ -105,7 +105,7 @@ Pontos de retomada:
 | 2 | Recovery key + reset destrutivo com token | ✅ implementado |
 | 3 | Google OIDC como identidade (opcional) | ✅ implementado — E2E validado |
 | 4 | WebAuthn / passkey para acesso rápido | ✅ 4.1 E2E browser validado; 4.2 implementado |
-| 5 | Breach check | ✅ HIBP online k-anonymity + ✅ adapter para índice local; ⏳ corpus local em importação |
+| 5 | Breach check | ✅ HIBP online k-anonymity + ✅ adapter para índice local + ✅ corpus local validado |
 | 6 | Hardening e portabilidade local | ✅ Auto Lock + ✅ exportação/importação cifrada + ✅ Security Timeline + ✅ hardening HTTP/CSP |
 
 ## Dev local (sem Docker)
@@ -132,6 +132,14 @@ Acesse http://127.0.0.1:5173 (proxy `/api → :8000` já configurado).
 make test           # backend (pytest)
 make test-frontend  # frontend (vitest)
 ```
+
+Validação do corpus HIBP offline (não versionado no Git):
+```bash
+make hibp-validate-local       # valida os 1.048.576 ranges e fixture conhecido
+make hibp-index-rebuild-local  # reconstrói o índice local se ele for perdido
+```
+
+O corpus `data/hibp/sha1/` é mantido fora do Git por tamanho.
 
 Estado atual da suíte: **119/119 backend**, **43/43 frontend** + TypeScript, build de produção, Ruff e migração Alembic validados.
 
