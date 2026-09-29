@@ -122,18 +122,18 @@ Mesmo na ocorrência de:
 - [x] Testes automatizados (Backend e Frontend)
 - [x] Docker Compose
 
-### Fase 2 — Segurança Avançada
-* **Auto Lock:** Bloqueio automático do cofre após período de inatividade (ex: 5 min sem atividade -> expurgar chaves da memória RAM -> exigir desbloqueio).
-* **Exportação Segura:** Exportação de dados cifrada ponta a ponta.
-* **Importação Segura:** Migração facilitada entre dispositivos e outros gerenciadores.
-* **MFA:** Suporte para TOTP (aplicativos autenticadores) e chaves físicas de segurança (FIDO2/WebAuthn futuramente).
+### Fase 2 — Segurança Avançada (Concluída)
+- [x] **Auto Lock:** Bloqueio automático do cofre após período de inatividade (ex: 5 min sem atividade -> expurgar chaves da memória RAM -> exigir desbloqueio).
+- [x] **Exportação Segura:** Exportação de dados cifrada ponta a ponta.
+- [x] **Importação Segura:** Migração cifrada validada por testes.
+- [x] **MFA:** TOTP e WebAuthn/passkeys implementados; suporte a múltiplos dispositivos.
 
 ### Fase 3 — Desktop
 * **Tecnologia:** Electron (Windows, Linux, macOS)
 * **Estrutura:** `Electron -> VaultLocal API Local -> Banco Local`
 * **Objetivos:** Experiência nativa, funcionamento 100% offline, persistência controlada e base para integração com o SO e navegador.
 
-### Fase 4 — Extensão Chrome
+### Fase 4 — Extensão Chrome (Planejada)
 * **Objetivo:** Integrar o cofre de forma segura ao navegador.
 * **Funcionalidades:**
   * **Autofill:** Preenchimento automático de usuário, e-mail e senha.
@@ -213,9 +213,9 @@ O objetivo é construir uma **plataforma de segurança pessoal** onde o usuário
 ## 12. Próximos Passos Prioritários
 
 ### Curto Prazo
-1. Finalizar MVP e blindar suíte de testes.
-2. Implementar **Auto Lock** na interface e no estado de sessão.
-3. Implementar rotinas de **Exportação e Importação Criptografada**.
+1. Manter a suíte de testes e validação de segurança como gate de release.
+2. Evoluir a experiência de instalação e demonstração do Alpha.
+3. Preparar os próximos incrementos de desktop/extensão sem comprometer o modelo zero-knowledge.
 
 ### Médio Prazo
 1. Aplicação Desktop (Electron + API Local).
