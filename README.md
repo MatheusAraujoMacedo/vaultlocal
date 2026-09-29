@@ -2,6 +2,10 @@
 
 Status de release: **0.2.0-alpha.1** — alpha técnico, local-first, com foco em segurança.
 
+**CI:** backend + frontend + Docker, com testes, lint, auditoria de dependências, typecheck, build e smoke test.
+
+> **Estado do Alpha:** suíte local validada com **119 testes backend + 43 testes frontend**, TypeScript, build de produção, Ruff, `pip-audit`, `npm audit` e validação do corpus HIBP offline completo. O projeto é um Alpha técnico para demonstração e feedback; não substitui uma auditoria de segurança independente.
+
 Gerenciador de senhas self-hosted, local-first, com criptografia zero-knowledge
 end-to-end. Stack: FastAPI + React + Postgres via Docker Compose. Bind padrão
 em `127.0.0.1`.
@@ -91,6 +95,12 @@ guarde-a offline.
 
 Segurança e modelo de ameaça: consulte **SECURITY.md** e **docs/deployment/hardening.md**.
 
+## Release e qualidade
+
+A branch `main` recebe uma suíte de CI que valida três áreas: backend, frontend e Docker. A verificação local equivalente é `make verify`.
+
+O projeto segue um modelo **local-first / zero-knowledge**: recursos online são opcionais quando explicitamente configurados, enquanto o Health Dashboard pode usar o corpus HIBP local sem enviar o hash completo da senha ao serviço externo.
+
 ## Roadmap (RFC ativa)
 
 Fases documentadas em `docs/superpowers/specs/2026-09-23-forgot-password-rfc.md`.
@@ -140,7 +150,7 @@ make hibp-validate-local       # valida os 1.048.576 ranges e fixture conhecido
 make hibp-index-rebuild-local  # reconstrói o índice local se ele for perdido
 ```
 
-O corpus `data/hibp/sha1/` é mantido fora do Git por tamanho.
+O corpus `data/hibp/sha1/` é mantido fora do Git por tamanho. Ele contém 1.048.576 ranges SHA-1 e é montado como somente leitura no container da API.
 
 Estado atual da suíte: **119/119 backend**, **43/43 frontend** + TypeScript, build de produção, Ruff e migração Alembic validados.
 
