@@ -202,6 +202,7 @@ class HealthReport(Base):
     weak_count: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     reused_count: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     old_count: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    breached_count: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

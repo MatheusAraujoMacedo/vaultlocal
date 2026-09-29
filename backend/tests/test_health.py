@@ -16,6 +16,7 @@ async def test_post_report_creates_new(client, register_and_login):
     assert body["weak_count"] == 2
     assert body["reused_count"] == 1
     assert body["old_count"] == 3
+    assert body["breached_count"] == 0
     assert body["score"] == 100 - (15 * 2) - (10 * 1)  # 60
     assert "id" in body
     assert "created_at" in body
@@ -44,6 +45,25 @@ async def test_post_report_upserts_when_exists(client, register_and_login):
     assert body["total_entries"] == 12
     assert body["weak_count"] == 0
     assert body["reused_count"] == 0
+
+
+async def test_post_report_tracks_breach_count_and_score(client, register_and_login):
+    headers = await _auth_headers(register_and_login, "health-breach@test.com")
+    resp = await client.post(
+        "/api/v1/health/report",
+        headers=headers,
+        json={
+            "total_entries": 4,
+            "weak_count": 1,
+            "reused_count": 1,
+            "old_count": 0,
+            "breached_count": 1,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["breached_count"] == 1
+    assert body["score"] == 55
 
 
 async def test_get_latest_returns_404_when_none(client, register_and_login):

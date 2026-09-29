@@ -160,6 +160,7 @@ export interface HealthReportPayload {
   weak_count: number
   reused_count: number
   old_count: number
+  breached_count: number
 }
 
 export interface HealthReport extends HealthReportPayload {

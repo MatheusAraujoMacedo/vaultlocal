@@ -14,6 +14,7 @@ export interface HealthReport {
   weakCount: number;
   reusedCount: number;
   oldCount: number;
+  breachedCount: number;
   entries: EntryHealth[];
 }
 
@@ -58,6 +59,7 @@ export function analyze(entries: EntryForAnalysis[], rules: HealthRule[] = defau
     weakCount,
     reusedCount,
     oldCount,
+    breachedCount: 0,
     entries: Array.from(byEntry.values()),
   };
 }

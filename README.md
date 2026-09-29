@@ -72,10 +72,11 @@ guarde-a offline.
 - **Gerador de senhas local** — geração feita no navegador via Web Crypto, sem o servidor ver a senha gerada.
 - **Busca** — sobre `title`/`site` (claro) server-side.
 - **Health Dashboard** (`/health`) — score 0–100 do cofre; detecta senhas
-  fracas (comprimento/comum/só-letras/só-dígitos), reutilizadas e antigas.
-  Análise 100% client-side; servidor persiste só contagens agregadas. Ver
-  `docs/features/health-dashboard.md` e roadmap de **breach check local
-  via HIBP offline**.
+  fracas (comprimento/comum/só-letras/só-dígitos), reutilizadas, antigas e
+  comprometidas. Análise 100% client-side; servidor persiste só contagens agregadas.
+  A checagem HIBP é opt-in e usa k-anonymity: o navegador envia apenas um prefixo
+  de hash para consulta e faz o match completo localmente. Ver
+  `docs/features/health-dashboard.md`.
 - **Auditor/security headers** — CSP, `X-Frame-Options`, `Referrer-Policy`,
   `Permissions-Policy` restritivas. Ver `docs/deployment/csp.md`.
 
@@ -83,7 +84,9 @@ guarde-a offline.
 
 Fases documentadas em `docs/superpowers/specs/2026-09-23-forgot-password-rfc.md`.
 
-Ponto de retomada da implementação atual: `docs/superpowers/plans/2026-09-28-vaultlocal-phase4-handoff.md`.
+Pontos de retomada:
+- `docs/superpowers/plans/2026-09-28-vaultlocal-phase4-handoff.md` — handoff das Phases 1–4.2.
+- `docs/superpowers/plans/2026-09-28-phase5-breach-check.md` — implementação e próximos passos da Phase 5.
 
 | Fase | Entrega | Status |
 |---|---|---|
@@ -91,7 +94,7 @@ Ponto de retomada da implementação atual: `docs/superpowers/plans/2026-09-28-v
 | 2 | Recovery key + reset destrutivo com token | ✅ implementado |
 | 3 | Google OIDC como identidade (opcional) | ✅ implementado — E2E validado |
 | 4 | WebAuthn / passkey para acesso rápido | ✅ 4.1 E2E browser validado; 4.2 implementado |
-| 5 | Breach check local (HIBP offline) | 📋 spec em `health-dashboard.md §9` |
+| 5 | Breach check | ✅ 5.1 HIBP k-anonymity client-side; 📋 5.2 índice offline |
 
 ## Dev local (sem Docker)
 

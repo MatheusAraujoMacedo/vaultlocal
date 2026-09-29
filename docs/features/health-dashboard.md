@@ -71,6 +71,7 @@ interface HealthReport {
   weakCount: number       // entradas com ao menos 1 issue da WeakRule
   reusedCount: number     // entradas cuja senha aparece em 2+ entradas
   oldCount: number        // entradas com > 365 dias sem atualizar
+  breachedCount: number   // entradas encontradas no último breach check
   entries: EntryHealth[]  // issues detalhadas por entrada
 }
 ```
@@ -81,13 +82,15 @@ Base: `/api/v1`. Ambas exigem `Authorization: Bearer <access_token>`.
 
 | Método | Rota              | Body / Resposta                                              |
 |--------|-------------------|--------------------------------------------------------------|
-| POST   | `/health/report`  | Body: `{score, total_entries, weak_count, reused_count, old_count}`. Upsert por `user_id`. Retorna `{id}`. |
-| GET    | `/health/latest`  | Retorna o relatório persistido (`{id, user_id, score, total_entries, weak_count, reused_count, old_count, created_at}`) ou `404` se nunca houve análise. |
+| POST   | `/health/report`  | Body: `{score, total_entries, weak_count, reused_count, old_count, breached_count}`. Upsert por `user_id`. Retorna o relatório agregado. |
+| GET    | `/health/latest`  | Retorna o relatório persistido (`{id, user_id, score, total_entries, weak_count, reused_count, old_count, breached_count, created_at}`) ou `404` se nunca houve análise. |
 
 Observações:
 - O POST é fire-and-forget no cliente (falha não bloqueia a UI).
-- `score` viaja no payload mas não é persistido nem usado no servidor — mantido
-  por compatibilidade de contrato caso o servidor passe a validar faixa (0-100).
+- `score` continua no payload por compatibilidade, mas o valor persistido não é usado
+  para cálculo. O servidor deriva o score das contagens, incluindo `breached_count`.
+- `breached_count` é somente uma contagem agregada de entradas afetadas; detalhes por
+  entrada ficam no navegador e nunca são persistidos no backend.
 
 ## 5. Rules engine
 
@@ -101,13 +104,17 @@ EntryForAnalysis { id, password, updatedAt }
   │ WeakRule   → severity critical, 1 issue/entry│
   │ ReuseRule  → severity warning, 1 issue/entry │
   │ OldRule    → severity info,    1 issue/entry │
+  │ BreachCheck→ severity critical, 1 issue/entry│
   └──────────────────────────────────────────────┘
            │
            ▼  agregação por entryId
   EntryHealth { hasWeak, hasReuse, hasOld, issues[] }
            │
            ▼  contagens: weakCount = #entries com hasWeak, etc.
-  HealthReport
+  BreachCheck → matches detalhados só no cliente
+           │
+           ▼
+  HealthReport { ... , breachedCount }
 ```
 
 ### Regra 1 — `WeakRule` (critical)
@@ -153,7 +160,14 @@ incrementa no máximo 1 por entrada (via flags `hasWeak`/`hasReuse`/`hasOld`).
 ## 6. Fórmula do score
 
 ```
-score = clamp(100 - 15 * weakCount - 10 * reusedCount, 0, 100)
+score = clamp(
+  100
+  - 20 * breachedCount
+  - 15 * weakCount
+  - 10 * reusedCount,
+  0,
+  100
+)
 ```
 
 - Cofre vazio → 100.
@@ -164,9 +178,13 @@ score = clamp(100 - 15 * weakCount - 10 * reusedCount, 0, 100)
 
 ## 7. Decisões de MVP (cortes conscientes)
 
-- **HIBP (Have I Been Pwned)** — cortado. Exigiria k-anonymity contra API
-  externa, e o app é local-first/offline. Lista local de senhas comuns cobre o
-  caso mais gritante.
+- **HIBP** — a primeira implementação é opt-in e client-side usando a API pública
+  de Pwned Passwords com k-anonymity. Apenas os 5 primeiros caracteres do SHA-1
+  são enviados; o restante é comparado localmente. O corpus HIBP completo não é
+  embarcado no aplicativo.
+- **Modo offline completo** — separado da primeira implementação para evitar
+  distribuir um corpus de múltiplos GB no bundle. Será uma etapa posterior com
+  índice local/importável.
 - **Histórico de relatórios** — cortado. Um único relatório por usuário
   (upsert). Tendência aproximada fica no `localStorage` do navegador (delta de
   score). Evita crescimento de tabela e decisões de retenção.
@@ -189,9 +207,10 @@ score = clamp(100 - 15 * weakCount - 10 * reusedCount, 0, 100)
 
 ## 9. Próximos passos
 
+- Modo offline completo com corpus HIBP importável e índice local.
+- Atualização incremental do índice offline sem enviar consultas de senha à rede.
 - Regra de entropia (zxcvbn ou equivalente) em vez de heurísticas de regex.
 - Detecção de reutilização por similaridade (hash normalizado, edição).
-- Opt-in de checagem HIBP com k-anonymity quando houver rede.
 - Histórico de relatórios com janela fixa (ex.: últimos 30) quando houver
   necessidade real de tendência server-side.
 - Botão "corrigir tudo" sugerindo senhas geradas em lote para entradas fracas.
@@ -201,7 +220,7 @@ score = clamp(100 - 15 * weakCount - 10 * reusedCount, 0, 100)
 
 Pré-condição: stack no ar (`docker compose up -d --build`) e um usuário criado.
 
-1. Login em `http://127.0.0.1:8080` com usuário que tenha entradas.
+1. Login em `http://localhost:8080` com usuário que tenha entradas.
 2. Criar/editar entradas cobrindo os casos:
    - uma senha fraca (ex.: `abc123`),
    - duas entradas com a mesma senha,
@@ -219,10 +238,14 @@ Pré-condição: stack no ar (`docker compose up -d --build`) e um usuário cria
 6. Conferir persistência (best-effort):
    - `docker compose exec db psql -U vault vaultdb -c 'SELECT * FROM health_reports;'`
    - deve haver exatamente 1 linha por usuário, atualizada a cada visita.
-7. Cofre vazio: novo usuário sem entradas → score 100, sem issues,
+7. Clicar em "Verificar agora" em um navegador com internet e confirmar que a
+   entrada comprometida aparece como issue crítica sem que senha ou hash completo
+   apareçam na requisição.
+8. Cofre vazio: novo usuário sem entradas → score 100, sem issues,
    mensagem "Nenhum problema encontrado".
-8. Reload da página `/health` (F5): esperado erro/expiração de KEK — fazer
-   login de novo e repetir a análise.
+9. Reload da página `/health`: os detalhes por entrada do breach check não devem
+   sobreviver ao reload; o backend pode manter apenas o `breached_count` agregado.
+10. Reload da página `/health` com KEK expirada: fazer login novamente e repetir a análise.
 
 ## 11. Testes automatizados
 

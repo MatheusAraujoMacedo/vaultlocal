@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { analyze } from '../health/engine'
+import { checkPasswordsWithHibp } from '../health/breach'
 import { computeScore } from '../health/score'
 import type { EntryForAnalysis } from '../health/rules'
 import { unwrapDataKey, decryptField, getSessionKek, buildDataKeyAad, buildFieldAad } from '../crypto'
@@ -39,6 +40,13 @@ export default function Health() {
   const [delta, setDelta] = useState<number | null>(null)
   const [counts, setCounts] = useState({ weak: 0, reused: 0, old: 0 })
   const [issues, setIssues] = useState<IssueView[]>([])
+  const [analysisEntries, setAnalysisEntries] = useState<EntryForAnalysis[]>([])
+  const [entryTitles, setEntryTitles] = useState<Record<string, string>>({})
+  const [breachMatches, setBreachMatches] = useState<IssueView[]>([])
+  const [breachedCount, setBreachedCount] = useState(0)
+  const [breachLoading, setBreachLoading] = useState(false)
+  const [breachStatus, setBreachStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [breachError, setBreachError] = useState('')
   const [filterRule, setFilterRule] = useState<string | null>(null)
 
   useEffect(() => {
@@ -48,8 +56,9 @@ export default function Health() {
         const blobs = await Promise.all(list.map((e) => api.getEntry(e.id)))
         const kek = getSessionKek()
 
-        const titleById = new Map<string, string>()
-        for (const b of blobs) titleById.set(b.id, b.title)
+        const titleById: Record<string, string> = {}
+        for (const b of blobs) titleById[b.id] = b.title
+        setEntryTitles(titleById)
 
         const forAnalysis: EntryForAnalysis[] = await Promise.all(
           blobs.map(async (b) => {
@@ -69,7 +78,10 @@ export default function Health() {
         )
 
         const report = analyze(forAnalysis)
-        const newScore = computeScore(report)
+        const latest = await api.getLatestHealth().catch(() => null)
+        const lastBreachedCount = latest?.breached_count ?? 0
+        const scoreReport = { ...report, breachedCount: lastBreachedCount }
+        const newScore = computeScore(scoreReport)
 
         try {
           await api.postHealthReport({
@@ -78,6 +90,7 @@ export default function Health() {
             weak_count: report.weakCount,
             reused_count: report.reusedCount,
             old_count: report.oldCount,
+            breached_count: lastBreachedCount,
           })
         } catch {
           /* report persistence is best-effort */
@@ -96,13 +109,15 @@ export default function Health() {
 
         setScore(newScore)
         setCounts({ weak: report.weakCount, reused: report.reusedCount, old: report.oldCount })
+        setBreachedCount(lastBreachedCount)
+        setAnalysisEntries(forAnalysis)
 
         const flat: IssueView[] = []
         for (const eh of report.entries) {
           for (const iss of eh.issues) {
             flat.push({
               entryId: eh.entryId,
-              entryTitle: titleById.get(eh.entryId) ?? eh.entryId,
+              entryTitle: titleById[eh.entryId] ?? eh.entryId,
               ruleId: iss.ruleId,
               severity: iss.severity,
               message: iss.message,
@@ -123,6 +138,71 @@ export default function Health() {
       }
     })()
   }, [nav])
+
+  async function runBreachCheck() {
+    setBreachLoading(true)
+    setBreachStatus('idle')
+    setBreachError('')
+
+    try {
+      const result = await checkPasswordsWithHibp(
+        analysisEntries.map((entry) => ({ id: entry.id, password: entry.password })),
+      )
+
+      const nextBreachMatches: IssueView[] = result.matches.map((match) => ({
+        entryId: match.entryId,
+        entryTitle: entryTitles[match.entryId] ?? match.entryId,
+        ruleId: 'breached-password',
+        severity: 'critical',
+        message:
+          match.prevalence === 1
+            ? 'Senha encontrada em vazamento conhecido (1 ocorrência)'
+            : 'Senha encontrada em vazamentos conhecidos (' + match.prevalence + ' ocorrências)',
+      }))
+
+      const nextBreachedCount = result.matches.length
+      const report = analyze(analysisEntries)
+      const score = computeScore({ ...report, breachedCount: nextBreachedCount })
+
+      const lastRaw = localStorage.getItem(LS_KEY)
+      if (lastRaw) {
+        try {
+          const prev = JSON.parse(lastRaw) as { score: number }
+          setDelta(score - prev.score)
+        } catch {
+          /* corrupted */
+        }
+      }
+      localStorage.setItem(LS_KEY, JSON.stringify({ score, at: new Date().toISOString() }))
+
+      setBreachMatches(nextBreachMatches)
+      setBreachedCount(nextBreachedCount)
+      setScore(score)
+      setBreachStatus('success')
+
+      try {
+        await api.postHealthReport({
+          score,
+          total_entries: report.totalEntries,
+          weak_count: report.weakCount,
+          reused_count: report.reusedCount,
+          old_count: report.oldCount,
+          breached_count: nextBreachedCount,
+        })
+      } catch {
+        /* report persistence is best-effort */
+      }
+    } catch (e: any) {
+      setBreachStatus('error')
+      if (e?.name === 'AbortError') {
+        setBreachError('A consulta ao HIBP expirou. Nenhum dado do cofre foi enviado ao servidor VaultLocal.')
+      } else {
+        setBreachError(e?.message ?? 'Não foi possível concluir a verificação de vazamentos')
+      }
+    } finally {
+      setBreachLoading(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -179,7 +259,7 @@ export default function Health() {
         </div>
       </header>
 
-      <section className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
         <button
           type="button"
           onClick={() => setFilterRule(filterRule === 'weak-password' ? null : 'weak-password')}
@@ -222,6 +302,48 @@ export default function Health() {
             {counts.old}
           </p>
         </button>
+        <button
+          type="button"
+          onClick={() => setFilterRule(filterRule === 'breached-password' ? null : 'breached-password')}
+          className="border border-stone-200 bg-white hover:border-stone-300 rounded-lg p-4 text-left transition"
+        >
+          <p className="text-sm text-stone-500">Em vazamentos</p>
+          <p className="mt-1 text-2xl font-semibold text-stone-900 tabular-nums">
+            {breachedCount}
+          </p>
+        </button>
+      </section>
+
+      <section className="mb-8 border border-stone-200 rounded-lg bg-white p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-sm font-medium text-stone-900">Verificar vazamentos conhecidos</h2>
+            <p className="mt-1 text-sm text-stone-500 max-w-2xl">
+              Consulta opcional ao Have I Been Pwned usando k-anonymity. O VaultLocal calcula o
+              SHA-1 no navegador, envia somente os 5 primeiros caracteres do hash e compara o
+              restante localmente. A senha e o hash completo não são enviados ao HIBP.
+            </p>
+            {breachedCount > 0 && breachStatus === 'idle' && (
+              <p className="mt-2 text-xs text-stone-500">
+                Última verificação registrada: {breachedCount} entrada(s) encontrada(s).
+              </p>
+            )}
+            {breachStatus === 'success' && (
+              <p className="mt-2 text-xs text-stone-600">
+                Verificação concluída: {breachedCount} entrada(s) encontrada(s) em bases de vazamento.
+              </p>
+            )}
+            {breachError && <p className="mt-2 text-xs text-red-600">{breachError}</p>}
+          </div>
+          <button
+            type="button"
+            onClick={runBreachCheck}
+            disabled={breachLoading || analysisEntries.length === 0}
+            className="shrink-0 px-3 py-2 rounded-md border border-stone-300 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          >
+            {breachLoading ? 'Verificando…' : 'Verificar agora'}
+          </button>
+        </div>
       </section>
 
       {filterRule && (
@@ -233,7 +355,9 @@ export default function Health() {
                 ? 'Senhas fracas'
                 : filterRule === 'reused-password'
                   ? 'Senhas reutilizadas'
-                  : 'Senhas antigas'}
+                  : filterRule === 'old-password'
+                    ? 'Senhas antigas'
+                    : 'Senhas em vazamentos'}
             </strong>
           </span>
           <button
@@ -246,7 +370,7 @@ export default function Health() {
         </div>
       )}
 
-      {issues.length === 0 ? (
+      {issues.length === 0 && breachMatches.length === 0 ? (
         <div className="border border-stone-200 rounded-lg bg-white p-8 text-center">
           <p className="text-sm text-stone-500">
             Nenhum problema encontrado. Continue com bons hábitos.
@@ -254,7 +378,7 @@ export default function Health() {
         </div>
       ) : (
         <section className="border border-stone-200 rounded-lg bg-white divide-y divide-stone-200">
-          {issues
+          {[...issues, ...breachMatches]
             .filter((iss) => (filterRule ? iss.ruleId === filterRule : true))
             .map((iss, i) => (
               <div key={`${iss.entryId}-${iss.ruleId}-${i}`} className="p-4 flex items-start justify-between gap-4">

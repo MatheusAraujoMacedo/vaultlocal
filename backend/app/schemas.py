@@ -489,10 +489,11 @@ class HealthReportIn(BaseModel):
     weak_count: int = Field(ge=0)
     reused_count: int = Field(ge=0)
     old_count: int = Field(ge=0)
+    breached_count: int = Field(ge=0, default=0)
 
     @model_validator(mode="after")
     def counts_within_total(self) -> "HealthReportIn":
-        for field in ("weak_count", "reused_count", "old_count"):
+        for field in ("weak_count", "reused_count", "old_count", "breached_count"):
             if getattr(self, field) > self.total_entries:
                 raise ValueError(f"{field} cannot exceed total_entries")
         return self
@@ -505,6 +506,7 @@ class HealthReportOut(BaseModel):
     weak_count: int
     reused_count: int
     old_count: int
+    breached_count: int
     score: int
     created_at: str
     updated_at: str

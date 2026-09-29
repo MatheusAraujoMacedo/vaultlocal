@@ -204,7 +204,8 @@ Phase 2  ✅ Recovery / reset
 Phase 3  ✅ Google OIDC + E2E
 Phase 4.1 ✅ WebAuthn / Passkey + PRF + E2E
 Phase 4.2 ✅ Login local + múltiplas passkeys + gestão/revogação
-Phase 5  📋 Breach Check local + integração com Health Dashboard
+Phase 5.1 ✅ Breach Check HIBP k-anonymity client-side + Health Dashboard
+Phase 5.2 📋 Índice HIBP offline importável
 ```
 
-**Próximo marco recomendado ao retomar:** começar a especificação técnica da **Phase 5.1 — Breach Check local**, antes de alterar o código.
+**Próximo marco recomendado ao retomar:** implementar a **Phase 5.2 — índice HIBP offline importável**, mantendo a mesma interface do checker atual.

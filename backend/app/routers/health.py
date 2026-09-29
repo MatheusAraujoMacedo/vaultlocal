@@ -11,10 +11,13 @@ from ..schemas import HealthReportIn, HealthReportOut
 router = APIRouter(prefix="/health", tags=["health"])
 
 
-def _compute_score(weak_count: int, reused_count: int, total_entries: int) -> int:
+def _compute_score(weak_count: int, reused_count: int, breached_count: int, total_entries: int) -> int:
     if total_entries == 0:
         return 100
-    return max(0, min(100, 100 - (15 * weak_count) - (10 * reused_count)))
+    return max(
+        0,
+        min(100, 100 - (20 * breached_count) - (15 * weak_count) - (10 * reused_count)),
+    )
 
 
 def _to_out(r: HealthReport) -> HealthReportOut:
@@ -25,7 +28,8 @@ def _to_out(r: HealthReport) -> HealthReportOut:
         weak_count=r.weak_count,
         reused_count=r.reused_count,
         old_count=r.old_count,
-        score=_compute_score(r.weak_count, r.reused_count, r.total_entries),
+        breached_count=r.breached_count,
+        score=_compute_score(r.weak_count, r.reused_count, r.breached_count, r.total_entries),
         created_at=r.created_at.isoformat(),
         updated_at=r.updated_at.isoformat(),
     )
@@ -46,6 +50,7 @@ async def upsert_report(
         existing.weak_count = body.weak_count
         existing.reused_count = body.reused_count
         existing.old_count = body.old_count
+        existing.breached_count = body.breached_count
         existing.updated_at = now
         await db.commit()
         await db.refresh(existing)
@@ -56,6 +61,7 @@ async def upsert_report(
         weak_count=body.weak_count,
         reused_count=body.reused_count,
         old_count=body.old_count,
+        breached_count=body.breached_count,
     )
     db.add(report)
     await db.commit()
