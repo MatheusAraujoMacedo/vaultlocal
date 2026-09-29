@@ -21,6 +21,7 @@ fluxos de autenticação, proteção do cofre, análise de segurança e recupera
 - [x] Favoritos, filtro rápido e preservação no export/import cifrado
 - [x] Histórico cifrado das últimas 5 senhas por entrada
 - [x] Campos personalizados cifrados no cliente e preservados no export/import
+- [x] Central de vencimento de segredos com classificação por urgência
 - [x] Health Dashboard
 - [x] HIBP online por k-anonymity
 - [x] Adapter para HIBP offline
