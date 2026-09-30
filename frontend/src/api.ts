@@ -306,6 +306,12 @@ export const api = {
       body: JSON.stringify({ email }),
     }, false),
 
+  webauthnLocalDeviceOptions: (credential_id: string) =>
+    request<WebAuthnLoginOptions>('/auth/webauthn/local/device/options', {
+      method: 'POST',
+      body: JSON.stringify({ credential_id }),
+    }, false),
+
   webauthnLocalVerify: (
     challenge: string,
     credential: Record<string, unknown>,

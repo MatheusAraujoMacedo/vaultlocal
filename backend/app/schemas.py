@@ -160,6 +160,10 @@ class WebAuthnLocalOptionsIn(BaseModel):
     email: EmailStr = Field(max_length=320)
 
 
+class WebAuthnLocalDeviceOptionsIn(BaseModel):
+    credential_id: str = Field(min_length=1, max_length=512)
+
+
 class WebAuthnRegisterOptionsOut(BaseModel):
     options: dict[str, Any]
     challenge: str
@@ -567,6 +571,8 @@ class SecurityEventOut(BaseModel):
         "passkey_added",
         "passkey_renamed",
         "passkey_revoked",
+        "session_revoked",
+        "sessions_revoked",
         "password_changed",
         "mfa_enabled",
         "recovery_used",

@@ -93,6 +93,7 @@ from ..schemas import (
     WebAuthnDeviceRevokeIn,
     WebAuthnDevicesOut,
     WebAuthnEnvelopeIn,
+    WebAuthnLocalDeviceOptionsIn,
     WebAuthnLocalOptionsIn,
     WebAuthnLoginOptionsOut,
     WebAuthnLoginOut,
@@ -1391,6 +1392,49 @@ async def webauthn_local_options(
         prf_salts={
             item.credential_id: base64.b64encode(item.prf_salt).decode()
             for item in credentials
+        },
+    )
+
+
+@router.post("/webauthn/local/device/options", response_model=WebAuthnLoginOptionsOut)
+@limiter.limit("10/minute")
+async def webauthn_local_device_options(
+    request: Request,
+    body: WebAuthnLocalDeviceOptionsIn,
+    db: AsyncSession = Depends(get_db),
+):
+    _require_webauthn_origin(request)
+    credential = await db.scalar(
+        select(WebAuthnCredential).where(
+            WebAuthnCredential.credential_id == body.credential_id,
+            WebAuthnCredential.encrypted_kek.is_not(None),
+            WebAuthnCredential.kek_nonce.is_not(None),
+        )
+    )
+    if not credential:
+        raise HTTPException(404, "trusted device not found")
+
+    user = await db.get(User, credential.user_id)
+    if not user or not user.mfa_configured or not user.recovery_wrapped_kek:
+        raise HTTPException(404, "trusted device not found")
+
+    challenge = await _create_webauthn_challenge(
+        db, user.id, "local-authentication"
+    )
+    try:
+        options = authentication_options(
+            [b64url_decode(credential.credential_id)],
+            challenge,
+        )
+    except Exception:
+        logger.exception("WebAuthn device authentication option generation failed")
+        raise HTTPException(500, "could not create WebAuthn options") from None
+
+    return WebAuthnLoginOptionsOut(
+        options=options,
+        challenge=b64url_encode(challenge),
+        prf_salts={
+            credential.credential_id: base64.b64encode(credential.prf_salt).decode()
         },
     )
 

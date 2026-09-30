@@ -21,6 +21,7 @@ import {
   authenticatePasskey,
   decryptKekWithPrf,
 } from '../webauthn'
+import { clearTrustedDeviceHint, getTrustedDeviceHint, saveTrustedDeviceHint } from '../security/trustedDevice'
 
 type Stage = 'credentials' | 'google-setup' | 'recovery-setup' | 'recovery-upgrade' | 'totp-setup' | 'totp-verify'
 
@@ -50,8 +51,28 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     challenge: string
     prf_salts: Record<string, string>
   } | null>(null)
+  const [trustedDeviceOptions, setTrustedDeviceOptions] = useState<{
+    options: Record<string, unknown>
+    challenge: string
+    prf_salts: Record<string, string>
+  } | null>(null)
   const nav = useNavigate()
   const location = useLocation()
+
+  useEffect(() => {
+    const hint = getTrustedDeviceHint()
+    if (!hint) return
+    setEmail(hint.email)
+    api.webauthnLocalDeviceOptions(hint.credentialId)
+      .then((options) => {
+        setTrustedDeviceOptions(options)
+        setInfo('Dispositivo confiável reconhecido. Use a passkey para desbloquear o cofre.')
+      })
+      .catch(() => {
+        clearTrustedDeviceHint()
+        setTrustedDeviceOptions(null)
+      })
+  }, [])
 
   useEffect(() => {
     const state = location.state as { registered?: boolean; email?: string } | null
@@ -173,6 +194,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
 
   async function completeLogin(tokens: { access_token: string; refresh_token: string }) {
     setTokens(tokens.access_token, tokens.refresh_token)
+    if (email) localStorage.setItem('vaultlocal_account_email', email)
     if (kek) setSessionKek(kek)
     if (rawKek) setSessionRawKek(rawKek)
     onLogin()
@@ -193,7 +215,9 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     setError('')
     setLoading(true)
     try {
-      const options = googlePasskeyOptions ?? await api.webauthnLocalOptions(email)
+      const options = googlePasskeyOptions
+        ?? trustedDeviceOptions
+        ?? await api.webauthnLocalOptions(email)
       const auth = await authenticatePasskey(options.options, options.prf_salts)
       const result = googlePasskeyOptions
         ? await api.webauthnGoogleVerify(options.challenge, auth.credential)
@@ -208,6 +232,8 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
       setSessionRawKek(raw)
       setSessionKek(unlockedKek)
       setTokens(result.access_token, result.refresh_token)
+      localStorage.setItem('vaultlocal_account_email', email)
+      saveTrustedDeviceHint({ email, credentialId: result.credential_id })
       onLogin()
       nav('/')
     } catch (err: any) {
@@ -637,7 +663,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
             >
               {loading
                 ? 'Autenticando…'
-                : (googlePasskeyOptions ? 'Desbloquear com este dispositivo' : 'Entrar com passkey')}
+                : (googlePasskeyOptions || trustedDeviceOptions ? 'Desbloquear com este dispositivo' : 'Entrar com passkey')}
             </button>
           )}
           <div>

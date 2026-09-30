@@ -4,6 +4,7 @@ import { api, EntryListItem, WebAuthnDevice } from '../api'
 import { getSessionRawKek } from '../crypto'
 import { encryptKekWithPrf, getPrfForCredential, registerPasskey } from '../webauthn'
 import { createEncryptedExport, decryptEncryptedExport, encryptPortableEntry } from '../export'
+import { saveTrustedDeviceHint } from '../security/trustedDevice'
 
 function expirationLabel(value: string | null): { text: string; className: string } | null {
   if (!value) return null
@@ -182,6 +183,13 @@ export default function Vault() {
         envelope.encrypted_kek,
         envelope.kek_nonce,
       )
+      const accountEmail = localStorage.getItem('vaultlocal_account_email')
+      if (accountEmail) {
+        saveTrustedDeviceHint({
+          email: accountEmail,
+          credentialId: quickAccessPending.credentialId,
+        })
+      }
       setQuickAccessPending(null)
       await loadDevices()
       setQuickAccessMessage('Acesso rápido ativado. Nos próximos logins, use uma passkey confiável para abrir o cofre.')
