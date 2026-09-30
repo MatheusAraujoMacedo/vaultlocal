@@ -217,6 +217,76 @@ async def test_google_webauthn_verify_consumes_challenge_and_checks_counter(
 
 
 @pytest.mark.asyncio
+async def test_local_device_options_are_restricted_to_the_trusted_credential(
+    client, register_and_login
+):
+    result = await register_and_login("webauthn-local-device-options@example.com")
+    await _enable_user_features(result["user_id"])
+
+    credential_id = _b64(b"device-only")
+    async with SessionLocal() as db:
+        db.add(
+            WebAuthnCredential(
+                user_id=result["user_id"],
+                credential_id=credential_id,
+                public_key=b"pub",
+                sign_count=2,
+                prf_salt=secrets.token_bytes(32),
+                encrypted_kek=base64.b64encode(secrets.token_bytes(48)).decode(),
+                kek_nonce=base64.b64encode(secrets.token_bytes(12)).decode(),
+            )
+        )
+        await db.commit()
+
+    response = await client.post(
+        "/api/v1/auth/webauthn/local/device/options",
+        json={"credential_id": credential_id},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert credential_id in payload["prf_salts"]
+    allow_credentials = payload["options"]["allowCredentials"]
+    assert len(allow_credentials) == 1
+    assert allow_credentials[0]["id"] == credential_id
+    assert allow_credentials[0]["type"] == "public-key"
+
+
+@pytest.mark.asyncio
+async def test_local_device_options_hide_missing_or_unwrapped_credentials(
+    client, register_and_login
+):
+    result = await register_and_login("webauthn-local-device-missing@example.com")
+    await _enable_user_features(result["user_id"])
+
+    missing = await client.post(
+        "/api/v1/auth/webauthn/local/device/options",
+        json={"credential_id": _b64(b"does-not-exist")},
+    )
+    assert missing.status_code == 404
+
+    pending_id = _b64(b"pending-device")
+    async with SessionLocal() as db:
+        db.add(
+            WebAuthnCredential(
+                user_id=result["user_id"],
+                credential_id=pending_id,
+                public_key=b"pub",
+                sign_count=0,
+                prf_salt=secrets.token_bytes(32),
+                encrypted_kek=None,
+                kek_nonce=None,
+            )
+        )
+        await db.commit()
+
+    pending = await client.post(
+        "/api/v1/auth/webauthn/local/device/options",
+        json={"credential_id": pending_id},
+    )
+    assert pending.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_local_webauthn_login_issues_session_and_consumes_challenge(
     client, register_and_login, monkeypatch
 ):
