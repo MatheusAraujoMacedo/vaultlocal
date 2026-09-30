@@ -12,6 +12,7 @@ const EVENT_LABELS: Record<SecurityEventType, string> = {
   passkey_added: 'Novo dispositivo confiável adicionado',
   passkey_renamed: 'Dispositivo confiável renomeado',
   passkey_revoked: 'Dispositivo confiável revogado',
+  passkeys_revoked: 'Todos os dispositivos confiáveis revogados',
   password_changed: 'Senha-mestra alterada',
   mfa_enabled: 'Autenticação em dois fatores ativada',
   recovery_used: 'Recovery Key utilizada',
@@ -29,7 +30,7 @@ function formatEventTime(value: string): string {
 }
 
 function eventMarker(type: SecurityEventType): string {
-  if (type === 'entry_deleted' || type === 'passkey_revoked') return '!'
+  if (type === 'entry_deleted' || type === 'passkey_revoked' || type === 'passkeys_revoked') return '!'
   if (type === 'recovery_used') return 'R'
   if (type === 'login_success') return 'L'
   if (type === 'logout') return 'S'

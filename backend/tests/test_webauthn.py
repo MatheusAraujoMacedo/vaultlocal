@@ -462,3 +462,12 @@ async def test_webauthn_revoke_all_devices_requires_totp_and_removes_all_credent
     devices = await client.get("/api/v1/auth/webauthn/devices", headers=headers)
     assert devices.status_code == 200, devices.text
     assert devices.json()["devices"] == []
+
+    timeline = await client.get("/api/v1/health/timeline", headers=headers)
+    assert timeline.status_code == 200, timeline.text
+    assert any(event["event_type"] == "passkeys_revoked" for event in timeline.json()["events"])
+
+    sessions = await client.get("/api/v1/auth/sessions", headers=headers)
+    assert sessions.status_code == 200, sessions.text
+    assert len(sessions.json()["sessions"]) == 1
+    assert sessions.json()["sessions"][0]["current"] is True

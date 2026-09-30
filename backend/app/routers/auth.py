@@ -1341,7 +1341,8 @@ async def webauthn_devices_revoke_all(
     )
     for credential in credentials:
         await db.delete(credential)
-        await record_security_event(db, user.id, "passkey_revoked")
+    if credentials:
+        await record_security_event(db, user.id, "passkeys_revoked")
     await db.commit()
 
 

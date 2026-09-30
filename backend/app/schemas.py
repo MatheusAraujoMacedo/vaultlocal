@@ -571,6 +571,7 @@ class SecurityEventOut(BaseModel):
         "passkey_added",
         "passkey_renamed",
         "passkey_revoked",
+        "passkeys_revoked",
         "session_revoked",
         "sessions_revoked",
         "password_changed",
