@@ -300,6 +300,12 @@ export const api = {
       body: JSON.stringify({ totp_code }),
     }),
 
+  webauthnRevokeAllDevices: (totp_code: string) =>
+    request<void>('/auth/webauthn/devices/revoke-all', {
+      method: 'POST',
+      body: JSON.stringify({ totp_code }),
+    }),
+
   webauthnLocalOptions: (email: string) =>
     request<WebAuthnLoginOptions>('/auth/webauthn/local/options', {
       method: 'POST',

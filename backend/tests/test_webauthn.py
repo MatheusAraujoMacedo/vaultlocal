@@ -414,3 +414,51 @@ async def test_webauthn_device_management_requires_totp_for_revoke(
     assert devices_after.status_code == 200, devices_after.text
     assert [item["credential_id"] for item in devices_after.json()["devices"]] == [_b64(b"managed-one")]
     assert devices_after.json()["devices"][0]["name"] == "Meu notebook"
+
+
+@pytest.mark.asyncio
+async def test_webauthn_revoke_all_devices_requires_totp_and_removes_all_credentials(
+    client, register_and_login, monkeypatch
+):
+    result = await register_and_login("webauthn-revoke-all@example.com")
+    await _enable_user_features(result["user_id"])
+
+    ids = [_b64(b"all-one"), _b64(b"all-two")]
+    async with SessionLocal() as db:
+        for credential_id in ids:
+            db.add(
+                WebAuthnCredential(
+                    user_id=result["user_id"],
+                    credential_id=credential_id,
+                    public_key=b"pub",
+                    sign_count=0,
+                    prf_salt=secrets.token_bytes(32),
+                    encrypted_kek=base64.b64encode(secrets.token_bytes(48)).decode(),
+                    kek_nonce=base64.b64encode(secrets.token_bytes(12)).decode(),
+                )
+            )
+        await db.commit()
+
+    headers = {"Authorization": f"Bearer {result['access_token']}"}
+
+    bad = await client.post(
+        "/api/v1/auth/webauthn/devices/revoke-all",
+        headers=headers,
+        json={"totp_code": "000000"},
+    )
+    assert bad.status_code in {401, 429}
+
+    async def valid_totp(user, code, db):
+        return True
+
+    monkeypatch.setattr("app.routers.auth._verify_totp_code", valid_totp)
+    revoked = await client.post(
+        "/api/v1/auth/webauthn/devices/revoke-all",
+        headers=headers,
+        json={"totp_code": "123456"},
+    )
+    assert revoked.status_code == 204
+
+    devices = await client.get("/api/v1/auth/webauthn/devices", headers=headers)
+    assert devices.status_code == 200, devices.text
+    assert devices.json()["devices"] == []

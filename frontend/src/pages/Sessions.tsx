@@ -136,6 +136,34 @@ export default function Sessions() {
     }
   }
 
+  async function revokeAllDevices() {
+    if (devices.length === 0) return
+    const confirmed = window.confirm(
+      `Revogar os ${devices.length} dispositivos confiáveis? O desbloqueio rápido será desativado em todos eles, mas as sessões atuais continuarão ativas.`,
+    )
+    if (!confirmed) return
+
+    const code = window.prompt('Digite o código TOTP de 6 dígitos para confirmar:')
+    if (code === null) return
+    const totp = code.trim()
+    if (!/^\d{6}$/.test(totp)) {
+      setError('Informe um código TOTP válido de 6 dígitos.')
+      return
+    }
+
+    setBusy('revoke-all-devices')
+    setError('')
+    try {
+      await api.webauthnRevokeAllDevices(totp)
+      setDevices([])
+      clearTrustedDeviceHint()
+    } catch (err: any) {
+      setError(err.message || 'Não foi possível revogar os dispositivos')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const remoteCount = sessions.filter((session) => !session.current).length
 
   return (
@@ -169,6 +197,14 @@ export default function Sessions() {
                     Passkeys autorizadas a desbloquear o cofre rapidamente neste dispositivo.
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={revokeAllDevices}
+                  disabled={devices.length === 0 || busy !== null}
+                  className="px-3 py-2 rounded-md border border-red-200 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+                >
+                  {busy === 'revoke-all-devices' ? 'Revogando…' : 'Revogar todos'}
+                </button>
               </div>
 
               {devices.length === 0 ? (

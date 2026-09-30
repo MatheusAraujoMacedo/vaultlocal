@@ -1317,6 +1317,34 @@ async def webauthn_device_rename(
     )
 
 
+@router.post("/webauthn/devices/revoke-all", status_code=204)
+@limiter.limit("3/minute")
+async def webauthn_devices_revoke_all(
+    body: WebAuthnDeviceRevokeIn,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_webauthn_origin(request)
+    if not user.mfa_configured or not user.totp_secret_enc:
+        raise HTTPException(403, "TOTP step-up is required")
+    if not await _verify_totp_code(user, body.totp_code, db):
+        locked_until = _aware(user.totp_locked_until)
+        if locked_until and locked_until > datetime.now(timezone.utc):
+            raise HTTPException(429, "TOTP temporarily locked")
+        raise HTTPException(401, "invalid TOTP code")
+
+    credentials = list(
+        await db.scalars(
+            select(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id)
+        )
+    )
+    for credential in credentials:
+        await db.delete(credential)
+        await record_security_event(db, user.id, "passkey_revoked")
+    await db.commit()
+
+
 @router.post("/webauthn/devices/{credential_id}/revoke", status_code=204)
 @limiter.limit("5/minute")
 async def webauthn_device_revoke(
