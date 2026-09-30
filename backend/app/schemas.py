@@ -66,6 +66,17 @@ class TokenOut(BaseModel):
     token_type: str = "bearer"
 
 
+class SessionOut(BaseModel):
+    id: str
+    created_at: datetime
+    expires_at: datetime
+    current: bool
+
+
+class SessionsOut(BaseModel):
+    sessions: list[SessionOut]
+
+
 class RefreshIn(BaseModel):
     refresh_token: str = Field(min_length=1, max_length=4096)
 

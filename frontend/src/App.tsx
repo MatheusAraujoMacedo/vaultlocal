@@ -9,6 +9,7 @@ import Health from './pages/Health'
 import Timeline from './pages/Timeline'
 import Trash from './pages/Trash'
 import Expirations from './pages/Expirations'
+import Sessions from './pages/Sessions'
 import { api } from './api'
 import { createAutoLock } from './security/autoLock'
 import { useEffect, useState } from 'react'
@@ -78,6 +79,10 @@ export default function App() {
       <Route
         path="/expirations"
         element={authed ? <Expirations /> : <Navigate to="/login" replace />}
+      />
+      <Route
+        path="/sessions"
+        element={authed ? <Sessions /> : <Navigate to="/login" replace />}
       />
     </Routes>
   )

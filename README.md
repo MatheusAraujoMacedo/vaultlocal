@@ -4,7 +4,7 @@ Status de release: **0.2.0-alpha.1** — alpha técnico, local-first, com foco e
 
 **CI:** backend + frontend + Docker, com testes, lint, auditoria de dependências, typecheck, build e smoke test.
 
-> **Estado do Alpha:** suíte local validada com **119 testes backend + 43 testes frontend**, TypeScript, build de produção, Ruff, `pip-audit`, `npm audit` e validação do corpus HIBP offline completo. O projeto é um Alpha técnico para demonstração e feedback; não substitui uma auditoria de segurança independente.
+> **Estado do Alpha:** suíte local validada com **125 testes backend + 46 testes frontend**, TypeScript, build de produção, Ruff, `pip-audit`, `npm audit` e validação do corpus HIBP offline completo. O projeto é um Alpha técnico para demonstração e feedback; não substitui uma auditoria de segurança independente.
 
 Gerenciador de senhas self-hosted, local-first, com criptografia zero-knowledge
 end-to-end. Stack: FastAPI + React + Postgres via Docker Compose. Bind padrão
@@ -93,6 +93,8 @@ guarde-a offline.
   `docs/features/health-dashboard.md`.
 - **Auditor/security headers** — CSP, `X-Frame-Options`, `Referrer-Policy`,
   `Permissions-Policy` restritivas. Ver `docs/deployment/csp.md`.
+- **Gestão de sessões** — visualização das sessões ativas, identificação da sessão
+  atual e revogação individual ou em massa das demais sessões.
 
 Segurança e modelo de ameaça: consulte **SECURITY.md** e **docs/deployment/hardening.md**.
 

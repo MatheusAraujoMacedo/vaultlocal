@@ -286,6 +286,72 @@ async def test_logout_invalidates_refresh_token(client):
     assert resp.status_code == 401
 
 
+async def test_sessions_can_be_listed_and_other_sessions_revoked(client):
+    await _register(client, "sessions@test.com")
+    first = await _login(client, "sessions@test.com")
+
+    async with SessionLocal() as db:
+        user = await db.scalar(select(User).where(User.email == "sessions@test.com"))
+        secret = decrypt_totp_secret(user.totp_secret_enc)
+
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "sessions@test.com", "auth_key": AUTH_KEY},
+    )
+    assert login.status_code == 200
+    second = await client.post(
+        "/api/v1/auth/mfa/verify",
+        headers={"Authorization": f"Bearer {login.json()['mfa_token']}"},
+        json={"totp_code": pyotp.TOTP(secret).now()},
+    )
+    assert second.status_code == 200
+
+    listed = await client.get(
+        "/api/v1/auth/sessions",
+        headers={"Authorization": f"Bearer {second.json()['access_token']}"},
+    )
+    assert listed.status_code == 200
+    sessions = listed.json()["sessions"]
+    assert len(sessions) == 2
+    assert sum(item["current"] for item in sessions) == 1
+
+    revoke = await client.post(
+        "/api/v1/auth/sessions/revoke-others",
+        headers={"Authorization": f"Bearer {second.json()['access_token']}"},
+    )
+    assert revoke.status_code == 204
+
+    old = await client.post("/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
+    assert old.status_code == 401
+
+    current = await client.get(
+        "/api/v1/auth/sessions",
+        headers={"Authorization": f"Bearer {second.json()['access_token']}"},
+    )
+    assert current.status_code == 200
+    assert len(current.json()["sessions"]) == 1
+    assert current.json()["sessions"][0]["current"] is True
+
+
+async def test_revoke_current_session_invalidates_access_token(client):
+    await _register(client, "revoke-current@test.com")
+    tokens = await _login(client, "revoke-current@test.com")
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+    listed = await client.get("/api/v1/auth/sessions", headers=headers)
+    assert listed.status_code == 200
+    current_id = next(item["id"] for item in listed.json()["sessions"] if item["current"])
+
+    revoke = await client.post(
+        f"/api/v1/auth/sessions/{current_id}/revoke",
+        headers=headers,
+    )
+    assert revoke.status_code == 204
+
+    denied = await client.get("/api/v1/auth/sessions", headers=headers)
+    assert denied.status_code == 401
+
+
 async def test_change_password_requires_authentication(client):
     resp = await client.post(
         "/api/v1/auth/change-password",

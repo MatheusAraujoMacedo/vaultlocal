@@ -44,6 +44,7 @@ from ..core.security import (
 )
 from ..core.totp import decrypt_totp_secret, encrypt_totp_secret
 from ..deps import (
+    get_current_session_context,
     get_current_user,
     get_db,
     get_mfa_pending_user,
@@ -82,6 +83,8 @@ from ..schemas import (
     RecoveryVerifyOut,
     RefreshIn,
     RegisterIn,
+    SessionOut,
+    SessionsOut,
     TokenOut,
     TotpCodeIn,
     TotpSetupOut,
@@ -1007,6 +1010,77 @@ async def logout(body: RefreshIn, db: AsyncSession = Depends(get_db)):
     await db.commit()
     return {"ok": True}
 
+
+@router.get("/sessions", response_model=SessionsOut)
+async def list_sessions(
+    context=Depends(get_current_session_context),
+    db: AsyncSession = Depends(get_db),
+):
+    user, current = context
+    now = datetime.now(timezone.utc)
+    sessions = list(
+        await db.scalars(
+            select(Session)
+            .where(Session.user_id == user.id)
+            .order_by(Session.created_at.desc())
+        )
+    )
+    result: list[SessionOut] = []
+    for session in sessions:
+        if (_aware(session.expires_at) or now) < now:
+            await db.delete(session)
+            continue
+        result.append(
+            SessionOut(
+                id=session.id,
+                created_at=session.created_at,
+                expires_at=session.expires_at,
+                current=session.id == current.id,
+            )
+        )
+    await db.commit()
+    return SessionsOut(sessions=result)
+
+
+@router.post("/sessions/revoke-others", status_code=204)
+async def revoke_other_sessions(
+    context=Depends(get_current_session_context),
+    db: AsyncSession = Depends(get_db),
+):
+    user, current = context
+    sessions = list(
+        await db.scalars(
+            select(Session).where(
+                Session.user_id == user.id,
+                Session.id != current.id,
+            )
+        )
+    )
+    for session in sessions:
+        await db.delete(session)
+    if sessions:
+        await record_security_event(db, user.id, "sessions_revoked")
+    await db.commit()
+
+
+@router.post("/sessions/{session_id}/revoke", status_code=204)
+async def revoke_session(
+    session_id: str,
+    context=Depends(get_current_session_context),
+    db: AsyncSession = Depends(get_db),
+):
+    user, _current = context
+    session = await db.scalar(
+        select(Session).where(
+            Session.id == session_id,
+            Session.user_id == user.id,
+        )
+    )
+    if not session:
+        raise HTTPException(404, "session not found")
+    await db.delete(session)
+    await record_security_event(db, user.id, "session_revoked")
+    await db.commit()
 
 
 def _require_webauthn_origin(request: Request) -> None:

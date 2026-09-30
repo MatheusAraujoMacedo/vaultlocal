@@ -22,10 +22,10 @@ async def get_db():
         yield session
 
 
-async def get_current_user(
+async def get_current_session_context(
     creds: HTTPAuthorizationCredentials = Depends(security),
     db: AsyncSession = Depends(get_db),
-) -> User:
+) -> tuple[User, Session]:
     token = creds.credentials
     try:
         user_id, session_id = verify_access_token(token)
@@ -37,6 +37,14 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="invalid session")
     if _is_session_expired(session):
         raise HTTPException(status_code=401, detail="session expired")
+    return user, session
+
+
+async def get_current_user(
+    creds: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    user, _session = await get_current_session_context(creds, db)
     return user
 
 

@@ -336,6 +336,12 @@ export default function Vault() {
               Vencimentos
             </Link>
             <Link
+              to="/sessions"
+              className="text-xs sm:text-sm text-stone-500 hover:text-stone-900 transition"
+            >
+              Sessões
+            </Link>
+            <Link
               to="/entry/new"
               className="inline-flex items-center px-3 py-1.5 rounded-md bg-stone-900 text-white text-sm font-medium hover:bg-stone-800 transition"
             >

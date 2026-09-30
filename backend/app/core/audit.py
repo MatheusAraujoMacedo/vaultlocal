@@ -19,6 +19,8 @@ SECURITY_EVENT_TYPES = {
     "recovery_used",
     "login_success",
     "logout",
+    "session_revoked",
+    "sessions_revoked",
 }
 
 async def record_security_event(

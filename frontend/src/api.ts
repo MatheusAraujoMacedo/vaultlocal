@@ -166,6 +166,17 @@ export interface Tokens {
   refresh_token: string
 }
 
+export interface VaultSession {
+  id: string
+  created_at: string
+  expires_at: string
+  current: boolean
+}
+
+export interface SessionsResult {
+  sessions: VaultSession[]
+}
+
 export interface TotpSetup {
   secret: string
   otpauth_uri: string
@@ -201,6 +212,8 @@ export type SecurityEventType =
   | 'password_changed'
   | 'mfa_enabled'
   | 'recovery_used'
+  | 'session_revoked'
+  | 'sessions_revoked'
 
 export interface SecurityEvent {
   event_type: SecurityEventType
@@ -440,6 +453,18 @@ export const api = {
     clearTokens()
     clearSessionKek()
   },
+
+  listSessions: () => request<SessionsResult>('/auth/sessions'),
+
+  revokeSession: (sessionId: string) =>
+    request<void>('/auth/sessions/' + encodeURIComponent(sessionId) + '/revoke', {
+      method: 'POST',
+    }),
+
+  revokeOtherSessions: () =>
+    request<void>('/auth/sessions/revoke-others', {
+      method: 'POST',
+    }),
 
   listEntries: () => request<EntryListItem[]>('/entries'),
 
