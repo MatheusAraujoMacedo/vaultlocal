@@ -209,4 +209,8 @@ Para a discussão de ameaças e hardening: docs/deployment/csp.md e docs/deploym
 
 ## Licença
 
-MIT (ver `LICENSE` se presente).
+**VaultLocal Source-Available License v1.0** (ver `LICENSE`).
+
+O código pode ser estudado, modificado e distribuído gratuitamente para fins não comerciais, conforme as condições da licença. Venda, licenciamento pago, distribuição comercial, SaaS pago ou derivados substancialmente baseados no VaultLocal oferecidos comercialmente exigem autorização prévia por escrito do detentor dos direitos autorais.
+
+Esta é uma licença **source-available**, não uma licença Open Source aprovada pela OSI. O uso interno por organizações é permitido, mas a distribuição comercial do software ou de derivados substanciais não é permitida sem autorização.

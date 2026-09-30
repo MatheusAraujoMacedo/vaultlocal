@@ -1,16 +1,61 @@
-MIT License
+VaultLocal Source-Available License v1.0
 
 Copyright (c) 2026 Matheus Araujo Macedo
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. Grant of Rights
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Subject to the conditions below, permission is hereby granted, free of charge,
+to any person obtaining a copy of the VaultLocal source code and associated
+documentation (the "Software"), to use, copy, study, modify, merge, publish,
+and create derivative works of the Software for personal, educational,
+research, testing, and other non-commercial purposes.
+
+The Software may also be used internally by an organization for its own
+business operations, provided that the Software, or a derivative work based
+substantially on the Software, is not sold, licensed, rented, sublicensed,
+offered as a paid hosted service, or otherwise commercially distributed to
+third parties.
+
+2. Non-Commercial Distribution
+
+You may distribute the original Software or modified versions for free and
+for non-commercial purposes, provided that:
+
+- this license and the copyright notice are included;
+- recipients are informed that the Software is not licensed for commercial
+  distribution without permission; and
+- modified versions clearly state that they are modified versions and do not
+  imply that they are the official VaultLocal project.
+
+3. Commercial Distribution Prohibited
+
+You may not, without prior written permission from the copyright holder:
+
+- sell the Software or a derivative work based substantially on it;
+- license or sublicense the Software for a fee;
+- offer the Software or a substantially based derivative as a paid SaaS,
+  hosted service, subscription, or downloadable commercial product;
+- bundle the Software or a substantially based derivative into a product or
+  service where the Software itself is a material part of the paid offering.
+
+Paid consulting, development, integration, training, or support services are
+permitted when the Software itself is not transferred, licensed, or offered as
+the paid product or service.
+
+4. Attribution and Name
+
+The copyright notice and this license must be retained in all copies or
+substantial portions of the Software. This license does not grant permission
+to use the VaultLocal name, logo, trademarks, or branding to imply endorsement
+or official affiliation.
+
+5. Commercial Permission
+
+The copyright holder may grant separate written permission for commercial use,
+distribution, licensing, hosting, or sale. Such permission may include
+additional terms.
+
+6. No Warranty
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -18,4 +63,9 @@ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+SOFTWARE, TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW.
+
+7. License Classification
+
+This is a source-available license. It is intentionally not an OSI-approved
+Open Source license because it restricts commercial distribution and sale.
