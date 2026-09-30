@@ -17,6 +17,8 @@ const EVENT_LABELS: Record<SecurityEventType, string> = {
   recovery_used: 'Recovery Key utilizada',
   login_success: 'Login concluído',
   logout: 'Sessão encerrada',
+  session_revoked: 'Sessão revogada',
+  sessions_revoked: 'Outras sessões revogadas',
 }
 
 function formatEventTime(value: string): string {
