@@ -216,12 +216,10 @@ export default function Sessions() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {devices.map((device) => {
-                    const isBusy = busy === `rename:${device.credential_id}` || busy === `revoke:${device.credential_id}`
-                    return (
-                      <div key={device.credential_id} className="rounded-lg border border-stone-200 bg-white px-4 py-4">
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="min-w-0">
+                  {devices.map((device) => (
+                    <div key={device.credential_id} className="rounded-lg border border-stone-200 bg-white px-4 py-4">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="text-sm font-medium text-stone-900 truncate">{device.name}</p>
                               {device.credential_backed_up && (
@@ -259,8 +257,7 @@ export default function Sessions() {
                           </div>
                         </div>
                       </div>
-                    )
-                  })}
+                  ))}
                 </div>
               )}
             </section>
